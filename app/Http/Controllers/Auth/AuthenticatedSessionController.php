@@ -35,20 +35,23 @@ class AuthenticatedSessionController extends Controller
 
         $user = \Illuminate\Support\Facades\Auth::user();
         $user->load('rol');
-        $rol = strtolower($user->rol?->descripcion ?? '');
+        $rolDesc = strtolower($user->rol?->descripcion ?? '');
+        $rolId = (int)$user->id_rol;
 
-        if (in_array($rol, ['cocinero', 'cocina'])) {
+        // PRIORIDAD 1: Cocina (Busca coincidencia parcial o ID 3)
+        if (str_contains($rolDesc, 'cocina') || str_contains($rolDesc, 'cocinero') || $rolId === 3) {
             return redirect('/cocina');
-        } elseif ($rol === 'mesero') {
-            return redirect('/mesero');
-        } elseif ($rol === 'admin') {
-            return redirect('/admin');
         }
 
-        // Respaldo por ID solo si no hay descripción
-        if ($user->id_rol == 3) return redirect('/cocina');
-        if ($user->id_rol == 2) return redirect('/mesero');
-        if ($user->id_rol == 1) return redirect('/admin');
+        // PRIORIDAD 2: Mesero (Busca coincidencia o ID 2)
+        if (str_contains($rolDesc, 'mesero') || $rolId === 2) {
+            return redirect('/mesero');
+        }
+
+        // PRIORIDAD 3: Admin (Busca coincidencia o ID 1)
+        if (str_contains($rolDesc, 'admin') || $rolId === 1) {
+            return redirect('/admin');
+        }
 
         return redirect()->intended(route('dashboard', absolute: false));
     }

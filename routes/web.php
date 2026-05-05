@@ -12,16 +12,13 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', function () {
         $user = auth()->user();
         $user->load('rol');
-        $rol = strtolower($user->rol?->descripcion ?? '');
+        $rolDesc = strtolower($user->rol?->descripcion ?? '');
+        $rolId = (int)$user->id_rol;
 
-        if (in_array($rol, ['cocinero', 'cocina'])) return redirect('/cocina');
-        if ($rol === 'mesero') return redirect('/mesero');
-        if ($rol === 'admin') return redirect('/admin');
-
-        // Fallback IDs
-        if ($user->id_rol == 3) return redirect('/cocina');
-        if ($user->id_rol == 2) return redirect('/mesero');
-        if ($user->id_rol == 1) return redirect('/admin');
+        if (str_contains($rolDesc, 'cocina') || str_contains($rolDesc, 'cocinero') || $rolId === 3) return redirect('/cocina');
+        if (str_contains($rolDesc, 'mesero') || $rolId === 2) return redirect('/mesero');
+        if (str_contains($rolDesc, 'admin') || $rolId === 1) return redirect('/admin');
+        
         return redirect('/');
     })->name('dashboard');
 

@@ -14,7 +14,7 @@ const clear = () => { display.value = ''; };
 
 const doLogin = () => {
     form.pin_acceso = display.value;
-    form.post(route('login'), {
+    form.post('/login', {
         onError: () => { shake.value = true; display.value = ''; setTimeout(() => shake.value = false, 600); },
         onFinish: () => { if (!form.hasErrors) display.value = ''; },
     });

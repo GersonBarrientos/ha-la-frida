@@ -34,15 +34,21 @@ class AuthenticatedSessionController extends Controller
         $request->session()->regenerate();
 
         $user = \Illuminate\Support\Facades\Auth::user();
-        $rol = strtolower(optional(optional($user)->rol)->descripcion ?? '');
+        $user->load('rol');
+        $rol = strtolower($user->rol?->descripcion ?? '');
 
-        if ($rol === 'admin' || $user->id_rol == 1) {
-            return redirect('/admin');
-        } elseif ($rol === 'mesero' || $user->id_rol == 2) {
-            return redirect('/mesero');
-        } elseif (in_array($rol, ['cocinero', 'cocina']) || $user->id_rol == 3) {
+        if (in_array($rol, ['cocinero', 'cocina'])) {
             return redirect('/cocina');
+        } elseif ($rol === 'mesero') {
+            return redirect('/mesero');
+        } elseif ($rol === 'admin') {
+            return redirect('/admin');
         }
+
+        // Respaldo por ID solo si no hay descripción
+        if ($user->id_rol == 3) return redirect('/cocina');
+        if ($user->id_rol == 2) return redirect('/mesero');
+        if ($user->id_rol == 1) return redirect('/admin');
 
         return redirect()->intended(route('dashboard', absolute: false));
     }

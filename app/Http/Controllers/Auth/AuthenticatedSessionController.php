@@ -33,8 +33,8 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        $rol = \Illuminate\Support\Facades\Auth::user()->rol->descripcion ?? '';
-        $rol = strtolower($rol);
+        $user = \Illuminate\Support\Facades\Auth::user();
+        $rol = strtolower(optional(optional($user)->rol)->descripcion ?? '');
 
         if ($rol === 'admin') {
             return redirect()->intended('/admin');

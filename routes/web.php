@@ -10,6 +10,11 @@ Route::get('/', function () {
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', function () {
+        $user = auth()->user();
+        $rol = strtolower($user->rol?->descripcion ?? '');
+        if ($rol === 'admin' || $user->id_rol == 1) return redirect('/admin');
+        if ($rol === 'mesero' || $user->id_rol == 2) return redirect('/mesero');
+        if (in_array($rol, ['cocinero', 'cocina']) || $user->id_rol == 3) return redirect('/cocina');
         return redirect('/');
     })->name('dashboard');
 

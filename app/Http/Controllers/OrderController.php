@@ -6,6 +6,8 @@ use App\Models\Mesa;
 use App\Models\Producto;
 use App\Models\Pedido;
 use App\Models\DetallePedido;
+use App\Models\Receta;
+use App\Models\Insumo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -31,10 +33,12 @@ class OrderController extends Controller
 
     public function getMenu()
     {
-        return response()->json(Producto::where('estado', 'Activo')->get());
+        return response()->json(
+            Producto::with('categoria')->where('estado', 'Activo')->get()
+        );
     }
 
-    // Validación de stock en milisegundos y creación de pedido
+    // Validación de stock y creación de pedido (PostgreSQL compatible — sin SPs)
     public function submitOrder(Request $request)
     {
         $validated = $request->validate([
@@ -43,8 +47,6 @@ class OrderController extends Controller
             'items.*.id_producto' => 'required|exists:Producto,id_producto',
             'items.*.cantidad' => 'required|integer|min:1',
             'items.*.notas' => 'nullable|string|max:500',
-            'nombre_cliente' => 'nullable|string|max:255',
-            'nit_cliente' => 'nullable|string|max:50'
         ]);
 
         try {
@@ -67,39 +69,48 @@ class OrderController extends Controller
                 }
             }
 
-            // 2. CREACIÓN DEL PEDIDO USANDO EL SP
-            $idUsuario = Auth::user()->id_usuario;
-            $idMesa = $validated['id_mesa'];
-            
-            $result = DB::select("DECLARE @nuevo_pedido INT; EXEC sp_RegistrarPedido @p_id_mesa=?, @p_id_usuario=?, @p_id_pedido=@nuevo_pedido OUTPUT; SELECT @nuevo_pedido AS id_pedido;", [$idMesa, $idUsuario]);
-            
-            $idPedido = $result[0]->id_pedido ?? null;
-
-            if (!$idPedido) {
-                throw new \Exception("La mesa no está Libre o falló el registro.");
+            // 2. Verificar mesa libre
+            $mesa = Mesa::findOrFail($validated['id_mesa']);
+            if ($mesa->estado !== 'Libre') {
+                return response()->json(['error' => 'La mesa no está libre.'], 400);
             }
 
-            // Guardar datos del cliente en el pedido
-            Pedido::where('id_pedido', $idPedido)->update([
-                'nombre_cliente' => $validated['nombre_cliente'] ?? 'Consumidor Final',
-                'nit_cliente' => $validated['nit_cliente'] ?? 'C/F'
+            // 3. Crear pedido
+            $idUsuario = Auth::user()->id_usuario;
+            $pedido = Pedido::create([
+                'id_mesa' => $validated['id_mesa'],
+                'id_usuario' => $idUsuario,
+                'estado_pedido' => 'Recibido',
             ]);
 
-            // 3. INSERCIÓN DE DETALLES
+            // 4. Marcar mesa como ocupada
+            $mesa->estado = 'Ocupada';
+            $mesa->save();
+
+            // 5. INSERCIÓN DE DETALLES + descuento de inventario
             foreach ($validated['items'] as $item) {
                 $producto = Producto::find($item['id_producto']);
                 DetallePedido::create([
-                    'id_pedido' => $idPedido,
+                    'id_pedido' => $pedido->id_pedido,
                     'id_producto' => $producto->id_producto,
                     'cantidad' => $item['cantidad'],
                     'precio_unitario' => $producto->precio,
                     'estado_cocina' => 'Recibido',
                     'notas' => $item['notas'] ?? null
                 ]);
+
+                // Descontar inventario (simula el trigger de SQL Server)
+                $recetas = Receta::where('id_producto', $producto->id_producto)->get();
+                foreach ($recetas as $receta) {
+                    Insumo::where('id_insumo', $receta->id_insumo)->decrement(
+                        'stock_actual',
+                        $receta->cantidad_necesaria * $item['cantidad']
+                    );
+                }
             }
 
             DB::commit();
-            return response()->json(['message' => 'Orden enviada a cocina con éxito', 'id_pedido' => $idPedido]);
+            return response()->json(['message' => 'Orden enviada a cocina con éxito', 'id_pedido' => $pedido->id_pedido]);
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -107,34 +118,56 @@ class OrderController extends Controller
         }
     }
     
-    // Proceso de Cobro
+    // Proceso de Cobro (PostgreSQL compatible — sin SPs)
     public function cobrarPedido(Request $request)
     {
         $validated = $request->validate([
             'id_pedido' => 'required|exists:Pedido,id_pedido',
             'metodo_pago' => 'required|string',
-            'nombre_cliente' => 'nullable|string|max:255',
-            'nit_cliente' => 'nullable|string|max:50'
         ]);
 
         try {
-            DB::statement("EXEC sp_ProcesarPago ?, ?, ?, ?", [
-                $validated['id_pedido'],
-                $validated['metodo_pago'],
-                $validated['nombre_cliente'] ?? null,
-                $validated['nit_cliente'] ?? null
+            DB::beginTransaction();
+
+            $pedido = Pedido::findOrFail($validated['id_pedido']);
+
+            // Calcular total
+            $total = DetallePedido::where('id_pedido', $pedido->id_pedido)
+                ->selectRaw('COALESCE(SUM(cantidad * precio_unitario), 0) as total')
+                ->value('total');
+
+            // Generar número de factura
+            $numeroFactura = 'FACT-' . now()->format('Ymd') . '-' . $pedido->id_pedido;
+
+            // Crear factura
+            DB::table('Factura')->insert([
+                'numero_factura' => $numeroFactura,
+                'total' => $total,
+                'metodo_pago' => $validated['metodo_pago'],
+                'id_pedido' => $pedido->id_pedido,
+                'fecha_pago' => now(),
             ]);
 
+            // Actualizar estado del pedido
+            $pedido->estado_pedido = 'Pagado';
+            $pedido->save();
+
+            // Liberar mesa
+            Mesa::where('id_mesa', $pedido->id_mesa)->update(['estado' => 'Libre']);
+
             $factura = DB::table('Factura')
-                ->where('id_pedido', $validated['id_pedido'])
+                ->where('id_pedido', $pedido->id_pedido)
                 ->orderByDesc('id_factura')
                 ->first();
+
+            DB::commit();
 
             return response()->json([
                 'message' => 'Pago procesado y mesa liberada correctamente',
                 'factura' => $factura
             ]);
         } catch (\Exception $e) {
+            DB::rollBack();
             return response()->json(['error' => 'Error al procesar el pago', 'details' => $e->getMessage()], 500);
         }
     }

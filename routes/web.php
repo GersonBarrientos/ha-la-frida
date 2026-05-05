@@ -31,7 +31,10 @@ Route::middleware(['auth'])->group(function () {
 
     // API Rutas Admin
     Route::get('/api/admin/stats', [\App\Http\Controllers\AdminController::class, 'getStats']);
+    
     Route::get('/api/admin/categorias', [\App\Http\Controllers\AdminController::class, 'getCategorias']);
+    Route::post('/api/admin/categorias', [\App\Http\Controllers\AdminController::class, 'storeCategoria']);
+    Route::delete('/api/admin/categorias/{id_categoria}', [\App\Http\Controllers\AdminController::class, 'deleteCategoria']);
     
     Route::get('/api/admin/insumos', [\App\Http\Controllers\AdminController::class, 'getInsumos']);
     Route::post('/api/admin/insumos', [\App\Http\Controllers\AdminController::class, 'storeInsumo']);
@@ -50,8 +53,6 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/api/admin/usuarios', [\App\Http\Controllers\AdminController::class, 'getUsuarios']);
     Route::post('/api/admin/usuarios', [\App\Http\Controllers\AdminController::class, 'storeUsuario']);
-    Route::get('/api/admin/mermas', [\App\Http\Controllers\AdminController::class, 'getMermas']);
-    Route::post('/api/admin/mermas', [\App\Http\Controllers\AdminController::class, 'storeMerma']);
     Route::get('/api/admin/profit', [\App\Http\Controllers\AdminController::class, 'getProfitReport']);
 
     // API Rutas Mesero

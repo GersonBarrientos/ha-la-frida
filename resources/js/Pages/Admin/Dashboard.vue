@@ -11,17 +11,17 @@ const showNotif = (msg, tipo = 'ok') => { notif.value = { msg, tipo }; setTimeou
 const stats = ref({ ventas_hoy: { Cantidad_Facturas: 0, Ingresos_Totales: 0 }, inventario_critico: [], total_insumos: 0, total_productos: 0 });
 
 const insumos = ref([]);
-const fInsumo = ref({ nombre_insumo: '', unidad_medida: 'gramos', stock_actual: 0, costo_unitario: 0, estado: 'Activo' });
+const fInsumo = ref({ nombre_insumo: '', unidad_medida: 'gramos', stock_actual: 0, estado: 'Activo' });
 const modalInsumo = ref(false);
 const editInsumoId = ref(null);
 
 const usuarios = ref([]);
-const fUsuario = ref({ nombre_completo: '', email: '', pin_acceso: '', id_rol: '' });
+const fUsuario = ref({ nombre_completo: '', correo: '', pin_acceso: '', id_rol: '' });
+const fCategoria = ref({ nombre_cat: '' });
+const modalCategoria = ref(false);
 const modalUsuario = ref(false);
 
-const mermas = ref([]);
-const fMerma = ref({ id_insumo: '', cantidad: '', descripcion: '' });
-const modalMerma = ref(false);
+
 
 const profitData = ref({ ingresos: 0, costos: 0, utilidad: 0 });
 
@@ -46,22 +46,41 @@ const editRecetaId = ref(null);
 const criticos = computed(() => insumos.value.filter(i => parseFloat(i.stock_actual) <= 10));
 
 const refreshAll = async () => {
-    const [s, ins, prod, cats, usr, mer, prof] = await Promise.all([
-        axios.get('/api/admin/stats'),
-        axios.get('/api/admin/insumos'),
-        axios.get('/api/admin/productos'),
-        axios.get('/api/admin/categorias'),
-        axios.get('/api/admin/usuarios'),
-        axios.get('/api/admin/mermas'),
-        axios.get('/api/admin/profit'),
-    ]);
-    stats.value = s.data;
-    insumos.value = ins.data;
-    productos.value = prod.data;
-    categorias.value = cats.data;
-    usuarios.value = usr.data;
-    mermas.value = mer.data;
-    profitData.value = prof.data;
+    try {
+        const [s, ins, prod, cats, usr, prof] = await Promise.all([
+            axios.get('/api/admin/stats'),
+            axios.get('/api/admin/insumos'),
+            axios.get('/api/admin/productos'),
+            axios.get('/api/admin/categorias'),
+            axios.get('/api/admin/usuarios'),
+            axios.get('/api/admin/profit'),
+        ]);
+        stats.value = s.data;
+        insumos.value = ins.data;
+        productos.value = prod.data;
+        categorias.value = cats.data;
+        usuarios.value = usr.data;
+        profitData.value = prof.data;
+    } catch(e) { console.error('Error loading data:', e); }
+};
+
+const guardarCategoria = async () => {
+    try {
+        await axios.post('/api/admin/categorias', fCategoria.value);
+        showNotif('Categoría creada ✓');
+        modalCategoria.value = false;
+        fCategoria.value = { nombre_cat: '' };
+        await refreshAll();
+    } catch (e) { showNotif(e.response?.data?.message || 'Error', 'err'); }
+};
+
+const eliminarCategoria = async (id) => {
+    if (!confirm('¿Eliminar esta categoría?')) return;
+    try {
+        await axios.delete(`/api/admin/categorias/${id}`);
+        showNotif('Categoría eliminada');
+        await refreshAll();
+    } catch (e) { showNotif(e.response?.data?.error || 'Error', 'err'); }
 };
 
 onMounted(refreshAll);
@@ -75,14 +94,7 @@ const guardarUsuario = async () => {
     } catch (e) { showNotif(e.response?.data?.message || 'Error', 'err'); }
 };
 
-const guardarMerma = async () => {
-    try {
-        await axios.post('/api/admin/mermas', fMerma.value);
-        showNotif('Merma registrada ✓');
-        modalMerma.value = false;
-        await refreshAll();
-    } catch (e) { showNotif(e.response?.data?.message || 'Error', 'err'); }
-};
+
 
 const guardarInsumo = async () => {
     try {
@@ -213,10 +225,7 @@ const eliminarIngrediente = async (id) => {
                             <input type="number" step="0.01" v-model="fInsumo.stock_actual" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box;" />
                         </div>
                     </div>
-                    <div style="margin-bottom:14px;">
-                        <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Costo Unitario (Q)</label>
-                        <input type="number" step="0.01" v-model="fInsumo.costo_unitario" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box;" />
-                    </div>
+
                     <div v-if="editInsumoId" style="margin-bottom:20px;">
                         <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Estado</label>
                         <select v-model="fInsumo.estado" style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;background:#fff;box-sizing:border-box;">
@@ -245,7 +254,7 @@ const eliminarIngrediente = async (id) => {
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
                         <div>
-                            <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Precio (Q)</label>
+                            <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Precio ($)</label>
                             <input type="number" step="0.01" v-model="fProducto.precio" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box;" />
                         </div>
                         <div>
@@ -309,7 +318,7 @@ const eliminarIngrediente = async (id) => {
 
         <!-- Tabs -->
         <div style="background:#fff;border-bottom:1px solid #e5e7eb;padding:0 28px;display:flex;gap:2px;overflow-x:auto;">
-            <button v-for="t in [['dashboard','📊 Panel'],['inventario','📦 Insumos'],['mermas','🗑️ Mermas'],['menu','🌮 Menú'],['receta', '📋 Recetas'],['usuarios','👥 Usuarios'],['profit','📈 Utilidad']]"
+            <button v-for="t in [['dashboard','📊 Panel'],['inventario','📦 Insumos'],['categorias','🏷️ Categorías'],['menu','🌮 Menú'],['receta', '📋 Recetas'],['usuarios','👥 Usuarios'],['profit','📈 Utilidad']]"
                 :key="t[0]" @click="tab = t[0]"
                 style="padding:14px 18px;border:none;background:transparent;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:'Segoe UI',sans-serif;transition:all 0.15s;white-space:nowrap;"
                 :style="tab===t[0] ? 'color:#16a34a;border-bottom-color:#16a34a;' : 'color:#6b7280;'">
@@ -324,7 +333,7 @@ const eliminarIngrediente = async (id) => {
                 <!-- KPI Cards -->
                 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
                     <div v-for="card in [
-                        { label:'Ventas Hoy', value: 'Q '+(parseFloat(stats.ventas_hoy?.Ingresos_Totales||0).toFixed(2)), icon:'💰', color:'#16a34a', bg:'#f0fdf4' },
+                        { label:'Ventas Hoy', value: '$ '+(parseFloat(stats.ventas_hoy?.Ingresos_Totales||0).toFixed(2)), icon:'💰', color:'#16a34a', bg:'#f0fdf4' },
                         { label:'Facturas', value: stats.ventas_hoy?.Cantidad_Facturas||0, icon:'🧾', color:'#2563eb', bg:'#eff6ff' },
                         { label:'Insumos', value: stats.total_insumos, icon:'📦', color:'#7c3aed', bg:'#f5f3ff' },
                         { label:'Platos Activos', value: stats.total_productos, icon:'🍽️', color:'#d97706', bg:'#fffbeb' },
@@ -354,7 +363,7 @@ const eliminarIngrediente = async (id) => {
                         <div style="display:flex;flex-direction:column;gap:12px;">
                             <div v-for="c in stats.ventas_por_categoria" :key="c.nombre_cat" style="display:flex;justify-content:space-between;align-items:center;">
                                 <span style="font-size:13px;font-weight:700;color:#4b5563;">{{ c.nombre_cat }}</span>
-                                <span style="font-size:13px;font-weight:900;color:#111827;">Q{{ parseFloat(c.total).toFixed(2) }}</span>
+                                <span style="font-size:13px;font-weight:900;color:#111827;">${{ parseFloat(c.total).toFixed(2) }}</span>
                             </div>
                         </div>
                     </div>
@@ -427,7 +436,7 @@ const eliminarIngrediente = async (id) => {
                         <div style="height:160px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;">
                             <img v-if="prod.url_imagen" :src="prod.url_imagen" style="width:100%;height:100%;object-fit:cover;">
                             <span v-else style="font-size:60px;">🌮</span>
-                            <div style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,0.9);padding:4px 10px;border-radius:12px;font-size:12px;font-weight:900;color:#16a34a;">Q{{ parseFloat(prod.precio).toFixed(2) }}</div>
+                            <div style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,0.9);padding:4px 10px;border-radius:12px;font-size:12px;font-weight:900;color:#16a34a;">${{ parseFloat(prod.precio).toFixed(2) }}</div>
                         </div>
                         <div style="padding:16px;">
                             <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px;">
@@ -493,32 +502,25 @@ const eliminarIngrediente = async (id) => {
                 </div>
             </div>
 
-            <!-- MERMAS -->
-            <div v-if="tab==='mermas'">
+            <!-- CATEGORÍAS -->
+            <div v-if="tab==='categorias'">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-                    <h2 style="font-size:18px;font-weight:800;">Registro de Mermas (Desperdicios)</h2>
-                    <button @click="modalMerma=true" style="background:#dc2626;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;">+ Registrar Merma</button>
+                    <h2 style="font-size:18px;font-weight:800;">Gestión de Categorías</h2>
+                    <button @click="modalCategoria=true" style="background:#7c3aed;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;">+ Nueva Categoría</button>
                 </div>
-                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
-                    <table style="width:100%;border-collapse:collapse;">
-                        <thead><tr style="background:#f9fafb;border-bottom:1px solid #e5e7eb;">
-                            <th style="padding:14px 20px;text-align:left;font-size:11px;color:#6b7280;">Fecha</th>
-                            <th style="padding:14px 20px;text-align:left;font-size:11px;color:#6b7280;">Insumo</th>
-                            <th style="padding:14px 20px;text-align:left;font-size:11px;color:#6b7280;">Cantidad</th>
-                            <th style="padding:14px 20px;text-align:left;font-size:11px;color:#6b7280;">Motivo</th>
-                            <th style="padding:14px 20px;text-align:left;font-size:11px;color:#6b7280;">Autor</th>
-                        </tr></thead>
-                        <tbody>
-                            <tr v-for="m in mermas" :key="m.id_merma" style="border-bottom:1px solid #f3f4f6;">
-                                <td style="padding:14px 20px;font-size:13px;">{{ new Date(m.fecha_hora).toLocaleString() }}</td>
-                                <td style="padding:14px 20px;font-weight:700;">{{ m.nombre_insumo }}</td>
-                                <td style="padding:14px 20px;color:#dc2626;font-weight:800;">-{{ m.cantidad }}</td>
-                                <td style="padding:14px 20px;font-size:12px;color:#6b7280;">{{ m.descripcion }}</td>
-                                <td style="padding:14px 20px;font-size:13px;font-weight:600;">{{ m.usuario }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));gap:16px;">
+                    <div v-for="cat in categorias" :key="cat.id_categoria" style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:20px;display:flex;align-items:center;justify-content:space-between;">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <div style="width:45px;height:45px;background:#f5f3ff;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;">🏷️</div>
+                            <div>
+                                <p style="margin:0;font-weight:800;font-size:15px;color:#111827;">{{ cat.nombre_cat }}</p>
+                                <p style="margin:2px 0 0 0;font-size:11px;color:#6b7280;">ID: {{ cat.id_categoria }}</p>
+                            </div>
+                        </div>
+                        <button @click="eliminarCategoria(cat.id_categoria)" style="background:#fef2f2;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;color:#dc2626;cursor:pointer;">Eliminar</button>
+                    </div>
                 </div>
+                <p v-if="!categorias.length" style="text-align:center;color:#9ca3af;padding:40px;font-size:14px;">No hay categorías registradas.</p>
             </div>
 
             <!-- USUARIOS -->
@@ -532,7 +534,7 @@ const eliminarIngrediente = async (id) => {
                         <div style="width:50px;height:50px;background:#f3f4f6;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;">👤</div>
                         <div style="flex:1;">
                             <p style="margin:0;font-weight:800;font-size:15px;">{{ u.nombre_completo }}</p>
-                            <p style="margin:0;font-size:12px;color:#6b7280;">{{ u.rol?.nombre_rol }} · {{ u.email }}</p>
+                            <p style="margin:0;font-size:12px;color:#6b7280;">{{ u.rol?.descripcion }} · {{ u.correo }}</p>
                         </div>
                         <span :style="u.estado==='Activo'?'background:#dcfce7;color:#16a34a;':'background:#fee2e2;color:#dc2626;'" style="font-size:10px;font-weight:800;padding:4px 8px;border-radius:10px;">{{ u.estado }}</span>
                     </div>
@@ -545,15 +547,15 @@ const eliminarIngrediente = async (id) => {
                 <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:24px;margin-bottom:30px;">
                     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:30px;text-align:center;">
                         <p style="font-size:12px;color:#64748b;font-weight:800;text-transform:uppercase;margin-bottom:10px;">Ingresos Totales (Ventas)</p>
-                        <p style="font-size:36px;font-weight:900;color:#16a34a;margin:0;">Q{{ profitData.ingresos.toFixed(2) }}</p>
+                        <p style="font-size:36px;font-weight:900;color:#16a34a;margin:0;">${{ profitData.ingresos.toFixed(2) }}</p>
                     </div>
                     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:30px;text-align:center;">
                         <p style="font-size:12px;color:#64748b;font-weight:800;text-transform:uppercase;margin-bottom:10px;">Costos de Producción (Recetas)</p>
-                        <p style="font-size:36px;font-weight:900;color:#dc2626;margin:0;">Q{{ profitData.costos.toFixed(2) }}</p>
+                        <p style="font-size:36px;font-weight:900;color:#dc2626;margin:0;">${{ profitData.costos.toFixed(2) }}</p>
                     </div>
                     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:30px;text-align:center;box-shadow:0 10px 25px rgba(22,163,74,0.1);">
                         <p style="font-size:12px;color:#64748b;font-weight:800;text-transform:uppercase;margin-bottom:10px;">Utilidad Real Bruta</p>
-                        <p style="font-size:36px;font-weight:900;color:#2563eb;margin:0;">Q{{ profitData.utilidad.toFixed(2) }}</p>
+                        <p style="font-size:36px;font-weight:900;color:#2563eb;margin:0;">${{ profitData.utilidad.toFixed(2) }}</p>
                     </div>
                 </div>
                 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:40px;text-align:center;">
@@ -582,7 +584,7 @@ const eliminarIngrediente = async (id) => {
                     </div>
                     <div style="margin-bottom:14px;">
                         <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Correo Electrónico</label>
-                        <input type="email" v-model="fUsuario.email" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;" />
+                        <input type="email" v-model="fUsuario.correo" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;" />
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
                         <div>
@@ -607,29 +609,19 @@ const eliminarIngrediente = async (id) => {
         </div>
     </Teleport>
 
-    <!-- MODAL MERMA -->
+    <!-- MODAL CATEGORÍA -->
     <Teleport to="body">
-        <div v-if="modalMerma" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:2000;backdrop-filter:blur(4px);">
-            <div style="background:#fff;width:100%;max-width:450px;border-radius:24px;padding:32px;box-shadow:0 20px 50px rgba(0,0,0,0.2);">
-                <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;">Registrar Desperdicio (Merma)</h2>
-                <form @submit.prevent="guardarMerma">
-                    <div style="margin-bottom:14px;">
-                        <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Seleccionar Insumo</label>
-                        <select v-model="fMerma.id_insumo" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;background:#fff;">
-                            <option v-for="i in insumos" :key="i.id_insumo" :value="i.id_insumo">{{ i.nombre_insumo }} ({{ i.unidad_medida }})</option>
-                        </select>
-                    </div>
-                    <div style="margin-bottom:14px;">
-                        <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Cantidad Perdida</label>
-                        <input type="number" step="0.01" v-model="fMerma.cantidad" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;" />
-                    </div>
+        <div v-if="modalCategoria" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:2000;backdrop-filter:blur(4px);">
+            <div style="background:#fff;width:100%;max-width:400px;border-radius:24px;padding:32px;box-shadow:0 20px 50px rgba(0,0,0,0.2);">
+                <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;">Nueva Categoría</h2>
+                <form @submit.prevent="guardarCategoria">
                     <div style="margin-bottom:20px;">
-                        <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Motivo detallado</label>
-                        <textarea v-model="fMerma.descripcion" required placeholder="Ej: Se cayó la charola de tomates..." style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;height:80px;resize:none;"></textarea>
+                        <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Nombre de la Categoría</label>
+                        <input type="text" v-model="fCategoria.nombre_cat" required placeholder="Ej: Tacos, Bebidas, Postres..." style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;box-sizing:border-box;" />
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                        <button type="button" @click="modalMerma=false" style="padding:14px;background:#f3f4f6;border:none;border-radius:12px;font-weight:700;cursor:pointer;">Cerrar</button>
-                        <button type="submit" style="padding:14px;background:#dc2626;border:none;border-radius:12px;color:#fff;font-weight:700;cursor:pointer;">Aplicar Descuento</button>
+                        <button type="button" @click="modalCategoria=false" style="padding:14px;background:#f3f4f6;border:none;border-radius:12px;font-weight:700;cursor:pointer;">Cerrar</button>
+                        <button type="submit" style="padding:14px;background:#7c3aed;border:none;border-radius:12px;color:#fff;font-weight:700;cursor:pointer;">Crear Categoría</button>
                     </div>
                 </form>
             </div>

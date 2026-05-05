@@ -142,9 +142,7 @@ const enviarOrden = async () => {
     try {
         await axios.post('/api/mesero/order', {
             id_mesa: mesaActual.value.id_mesa,
-            nombre_cliente: clienteNombre.value,
-            nit_cliente: clienteNit.value,
-            items: orden.value.map(i => ({ id_producto: i.id_producto, cantidad: i.cant, notas: i.notas }))
+                        items: orden.value.map(i => ({ id_producto: i.id_producto, cantidad: i.cant, notas: i.notas }))
         });
         toast('✅ Enviado a cocina');
         vista.value = 'mesas';
@@ -159,9 +157,7 @@ const procesarCobro = async () => {
     try {
         const res = await axios.post('/api/mesero/cobrar', { 
             id_pedido: pedidoActivo.value.id_pedido, 
-            metodo_pago: metodoPago.value,
-            nombre_cliente: clienteNombre.value,
-            nit_cliente: clienteNit.value
+            metodo_pago: metodoPago.value
         });
         factGenerada.value = res.data.factura;
         toast('✅ Pago procesado');
@@ -237,7 +233,7 @@ const cerrarTurno = () => router.post(route('logout'));
                         <p style="margin:5px 0 0 0;font-size:12px;font-weight:700;color:#64748b;">{{ mesa.capacidad }} PAX</p>
                         
                         <div v-if="mesa.estado==='Ocupada'" style="margin-top:15px;background:#ef4444;color:#fff;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:800;">
-                            Q{{ estadosMesas[mesa.id_mesa]?.total.toFixed(2) || '0.00' }}
+                            ${{ estadosMesas[mesa.id_mesa]?.total.toFixed(2) || '0.00' }}
                         </div>
                     </div>
                 </div>
@@ -297,7 +293,7 @@ const cerrarTurno = () => router.post(route('logout'));
                             <span v-else style="font-size:40px;">{{ getCatEmoji(prod.categoria?.nombre_cat || '') }}</span>
                         </div>
                         <h4 style="margin:0;font-size:14px;font-weight:800;color:#0f172a;text-align:center;">{{ prod.nombre_prod }}</h4>
-                        <p style="margin:8px 0 0 0;font-size:16px;font-weight:900;color:#10b981;">Q{{ parseFloat(prod.precio).toFixed(2) }}</p>
+                        <p style="margin:8px 0 0 0;font-size:16px;font-weight:900;color:#10b981;">${{ parseFloat(prod.precio).toFixed(2) }}</p>
                     </div>
                 </div>
 
@@ -316,7 +312,7 @@ const cerrarTurno = () => router.post(route('logout'));
                         <div v-for="(item, idx) in orden" :key="idx" style="background:#f8fafc;border-radius:15px;padding:15px;">
                             <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
                                 <span style="font-weight:800;font-size:14px;">{{ item.cant }}x {{ item.producto.nombre_prod }}</span>
-                                <span style="font-weight:900;color:#10b981;">Q{{ (item.cant * item.producto.precio).toFixed(2) }}</span>
+                                <span style="font-weight:900;color:#10b981;">${{ (item.cant * item.producto.precio).toFixed(2) }}</span>
                             </div>
                             <div style="display:flex;gap:10px;align-items:center;">
                                 <div style="display:flex;background:#fff;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;">
@@ -342,7 +338,7 @@ const cerrarTurno = () => router.post(route('logout'));
                         </div>
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
                             <span style="font-size:14px;font-weight:700;color:#64748b;">TOTAL A PAGAR</span>
-                            <span style="font-size:32px;font-weight:900;color:#0f172a;">Q{{ totalOrden.toFixed(2) }}</span>
+                            <span style="font-size:32px;font-weight:900;color:#0f172a;">${{ totalOrden.toFixed(2) }}</span>
                         </div>
                         <button @click="enviarOrden" :disabled="loading || !orden.length"
                             style="width:100%;height:60px;background:#0f172a;color:#fff;border:none;border-radius:18px;font-size:18px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:0.2s;"
@@ -382,7 +378,7 @@ const cerrarTurno = () => router.post(route('logout'));
 
                         <div style="background:#f0fdf4;border:2px dashed #10b981;border-radius:20px;padding:25px;text-align:center;margin-bottom:25px;">
                             <p style="margin:0;font-size:14px;font-weight:700;color:#15803d;">TOTAL A COBRAR</p>
-                            <h3 style="margin:10px 0;font-size:48px;font-weight:900;color:#0f172a;">Q{{ totalCobro.toFixed(2) }}</h3>
+                            <h3 style="margin:10px 0;font-size:48px;font-weight:900;color:#0f172a;">${{ totalCobro.toFixed(2) }}</h3>
                         </div>
 
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:25px;">
@@ -399,7 +395,7 @@ const cerrarTurno = () => router.post(route('logout'));
                             <input v-model="montoRecibido" type="number" placeholder="0.00" style="width:100%;height:55px;border-radius:15px;border:2px solid #e2e8f0;padding:0 20px;font-size:24px;font-weight:900;outline:none;box-sizing:border-box;">
                             <div v-if="parseFloat(montoRecibido) > 0" style="margin-top:15px;display:flex;justify-content:space-between;align-items:center;">
                                 <span style="font-weight:800;color:#64748b;">CAMBIO:</span>
-                                <span style="font-size:24px;font-weight:900;color:#10b981;">Q{{ cambio.toFixed(2) }}</span>
+                                <span style="font-size:24px;font-weight:900;color:#10b981;">${{ cambio.toFixed(2) }}</span>
                             </div>
                         </div>
 
@@ -426,12 +422,12 @@ const cerrarTurno = () => router.post(route('logout'));
                     <div style="border-bottom:1px dashed #000;padding-bottom:10px;margin-bottom:10px;">
                         <div v-for="det in pedidoActivo?.detalles" :key="det.id_detalle" style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
                             <span>{{ det.cantidad }}x {{ det.producto?.nombre_prod }}</span>
-                            <span>Q{{ (det.cantidad * parseFloat(det.precio_unitario)).toFixed(2) }}</span>
+                            <span>${{ (det.cantidad * parseFloat(det.precio_unitario)).toFixed(2) }}</span>
                         </div>
                     </div>
 
                     <div style="text-align:right;font-size:18px;font-weight:bold;margin-bottom:30px;">
-                        TOTAL: Q{{ parseFloat(factGenerada.total).toFixed(2) }}
+                        TOTAL: ${{ parseFloat(factGenerada.total).toFixed(2) }}
                     </div>
 
                     <button @click="finalizarTodo" style="width:100%;padding:15px;background:#000;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;font-family:sans-serif;">TERMINAR</button>

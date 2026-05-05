@@ -14,34 +14,41 @@ class AdminController extends Controller
     // === ESTADÍSTICAS DEL DASHBOARD ===
     public function getStats()
     {
-        $ventasHoy = DB::select("SELECT * FROM vw_VentasDelDia");
-        $inventarioCritico = DB::select("SELECT * FROM vw_InventarioCritico");
-        
-        // BI: Ventas por Categoría
-        $ventasPorCat = DB::select("
-            SELECT c.nombre_cat, SUM(dp.cantidad * dp.precio_unitario) as total
-            FROM Detalle_Pedido dp
-            JOIN Producto p ON dp.id_producto = p.id_producto
-            JOIN Categoria c ON p.id_categoria = c.id_categoria
-            JOIN Pedido ped ON dp.id_pedido = ped.id_pedido
-            WHERE CAST(ped.fecha_hora AS DATE) = CAST(GETDATE() AS DATE)
-            GROUP BY c.nombre_cat
-        ");
+        // Ventas del Día (PostgreSQL compatible)
+        $ventasHoy = DB::table('Factura')
+            ->whereDate('fecha_pago', now()->toDateString())
+            ->selectRaw('COUNT(id_factura) as "Cantidad_Facturas", COALESCE(SUM(total), 0) as "Ingresos_Totales"')
+            ->first();
 
-        // BI: Tráfico por Hora
-        $traficoHora = DB::select("
-            SELECT DATEPART(HOUR, fecha_hora) as hora, COUNT(*) as pedidos
-            FROM Pedido
-            WHERE CAST(fecha_hora AS DATE) = CAST(GETDATE() AS DATE)
-            GROUP BY DATEPART(HOUR, fecha_hora)
-            ORDER BY hora
-        ");
+        // Inventario Crítico
+        $inventarioCritico = Insumo::where('stock_actual', '<=', 10)
+            ->where('estado', 'Activo')
+            ->get();
+
+        // BI: Ventas por Categoría (hoy)
+        $ventasPorCat = DB::table('Detalle_Pedido as dp')
+            ->join('Producto as p', 'dp.id_producto', '=', 'p.id_producto')
+            ->join('Categoria as c', 'p.id_categoria', '=', 'c.id_categoria')
+            ->join('Pedido as ped', 'dp.id_pedido', '=', 'ped.id_pedido')
+            ->whereDate('ped.fecha_hora', now()->toDateString())
+            ->select('c.nombre_cat')
+            ->selectRaw('SUM(dp.cantidad * dp.precio_unitario) as total')
+            ->groupBy('c.nombre_cat')
+            ->get();
+
+        // BI: Tráfico por Hora (hoy)
+        $traficoHora = DB::table('Pedido')
+            ->whereDate('fecha_hora', now()->toDateString())
+            ->selectRaw('EXTRACT(HOUR FROM fecha_hora)::int as hora, COUNT(*) as pedidos')
+            ->groupByRaw('EXTRACT(HOUR FROM fecha_hora)')
+            ->orderBy('hora')
+            ->get();
 
         $totalInsumos = Insumo::count();
         $totalProductos = Producto::where('estado', 'Activo')->count();
 
         return response()->json([
-            'ventas_hoy' => $ventasHoy[0] ?? ['Cantidad_Facturas' => 0, 'Ingresos_Totales' => 0],
+            'ventas_hoy' => $ventasHoy ?? (object)['Cantidad_Facturas' => 0, 'Ingresos_Totales' => 0],
             'inventario_critico' => $inventarioCritico,
             'ventas_por_categoria' => $ventasPorCat,
             'trafico_hora' => $traficoHora,
@@ -53,7 +60,27 @@ class AdminController extends Controller
     // === CATEGORÍAS ===
     public function getCategorias()
     {
-        return response()->json(Categoria::all());
+        return response()->json(Categoria::orderBy('nombre_cat')->get());
+    }
+
+    public function storeCategoria(Request $request)
+    {
+        $validated = $request->validate([
+            'nombre_cat' => 'required|string|max:100|unique:Categoria,nombre_cat',
+        ]);
+
+        $categoria = Categoria::create($validated);
+        return response()->json(['message' => 'Categoría creada', 'categoria' => $categoria], 201);
+    }
+
+    public function deleteCategoria($id_categoria)
+    {
+        $cat = Categoria::findOrFail($id_categoria);
+        if (Producto::where('id_categoria', $id_categoria)->exists()) {
+            return response()->json(['error' => 'No se puede eliminar, tiene productos asignados.'], 422);
+        }
+        $cat->delete();
+        return response()->json(['message' => 'Categoría eliminada']);
     }
 
     // === GESTIÓN DE INSUMOS ===
@@ -204,67 +231,28 @@ class AdminController extends Controller
     {
         $validated = $request->validate([
             'nombre_completo' => 'required|string|max:100',
-            'email'           => 'required|email|unique:Usuario,email',
+            'correo'          => 'required|email|unique:Usuario,correo',
             'pin_acceso'      => 'required|string|size:4',
             'id_rol'          => 'required|exists:Rol,id_rol',
         ]);
 
-        // Encriptar PIN (Expert Requisite)
-        $validated['pin_acceso'] = bcrypt($validated['pin_acceso']);
-        
         $user = \App\Models\Usuario::create($validated);
         return response()->json(['message' => 'Usuario creado', 'usuario' => $user], 201);
-    }
-
-    // === GESTIÓN DE MERMAS ===
-    public function getMermas()
-    {
-        return response()->json(DB::select("
-            SELECT m.*, i.nombre_insumo, u.nombre_completo as usuario
-            FROM Merma m
-            JOIN Insumo i ON m.id_insumo = i.id_insumo
-            JOIN Usuario u ON m.id_usuario = u.id_usuario
-            ORDER BY m.fecha_hora DESC
-        "));
-    }
-
-    public function storeMerma(Request $request)
-    {
-        $validated = $request->validate([
-            'id_insumo'   => 'required|exists:Insumo,id_insumo',
-            'cantidad'    => 'required|numeric|min:0.01',
-            'descripcion' => 'required|string|max:500',
-        ]);
-
-        $validated['id_usuario'] = auth()->id();
-        
-        DB::table('Merma')->insert($validated);
-        return response()->json(['message' => 'Merma registrada y stock descontado']);
     }
 
     // === REPORTES FINANCIEROS (PROFIT) ===
     public function getProfitReport()
     {
-        $ventas = DB::select("
-            SELECT SUM(dp.cantidad * dp.precio_unitario) as ingresos
-            FROM Detalle_Pedido dp
-            JOIN Pedido p ON dp.id_pedido = p.id_pedido
-            WHERE p.estado_pedido = 'Pagado'
-        ")[0]->ingresos ?? 0;
-
-        $costos = DB::select("
-            SELECT SUM(dp.cantidad * r.cantidad_necesaria * i.costo_unitario) as costo_total
-            FROM Detalle_Pedido dp
-            JOIN Pedido p ON dp.id_pedido = p.id_pedido
-            JOIN Receta r ON dp.id_producto = r.id_producto
-            JOIN Insumo i ON r.id_insumo = i.id_insumo
-            WHERE p.estado_pedido = 'Pagado'
-        ")[0]->costo_total ?? 0;
+        $ventas = DB::table('Detalle_Pedido as dp')
+            ->join('Pedido as p', 'dp.id_pedido', '=', 'p.id_pedido')
+            ->where('p.estado_pedido', 'Pagado')
+            ->selectRaw('COALESCE(SUM(dp.cantidad * dp.precio_unitario), 0) as ingresos')
+            ->value('ingresos') ?? 0;
 
         return response()->json([
             'ingresos' => (float)$ventas,
-            'costos'   => (float)$costos,
-            'utilidad' => (float)$ventas - (float)$costos
+            'costos'   => 0,
+            'utilidad' => (float)$ventas
         ]);
     }
 }

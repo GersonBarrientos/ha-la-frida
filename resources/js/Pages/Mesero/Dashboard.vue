@@ -223,10 +223,10 @@ const cerrarTurno = () => router.post('/logout');
         </div>
     </Transition>
 
-    <div style="height:100vh;background:#f8fafc;display:flex;flex-direction:column;font-family:'Inter',system-ui,sans-serif;overflow:hidden;">
+    <div class="pos-container" style="height:100vh;background:#f8fafc;display:flex;flex-direction:column;font-family:'Inter',system-ui,sans-serif;overflow:hidden;">
         
         <!-- Header POS -->
-        <header style="background:#fff;border-bottom:1px solid #e2e8f0;height:65px;display:flex;align-items:center;justify-content:space-between;padding:0 25px;flex-shrink:0;">
+        <header class="pos-header" style="background:#fff;border-bottom:1px solid #e2e8f0;height:65px;display:flex;align-items:center;justify-content:space-between;padding:0 25px;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:20px;">
                 <button v-if="vista==='pedido'" @click="vista='mesas'" style="background:#f1f5f9;border:none;border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">🏠</button>
                 <div v-else style="font-size:24px;">🌮</div>
@@ -246,13 +246,13 @@ const cerrarTurno = () => router.post('/logout');
         </header>
 
         <!-- Main Content -->
-        <main style="flex:1;display:flex;overflow:hidden;">
+        <main class="pos-main" style="flex:1;display:flex;overflow:hidden;">
             
             <!-- VISTA: MAPA DE MESAS + PANEL NOTIF -->
-            <div v-if="vista==='mesas'" style="flex:1;display:flex;overflow:hidden;">
+            <div v-if="vista==='mesas'" class="mesas-layout" style="flex:1;display:flex;overflow:hidden;">
                 
                 <!-- Mapa de Mesas -->
-                <div style="flex:1;padding:30px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:25px;align-content:start;">
+                <div class="mesas-grid" style="flex:1;padding:30px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:25px;align-content:start;">
                     <div v-for="mesa in mesas" :key="mesa.id_mesa" @click="seleccionarMesa(mesa)"
                         style="aspect-ratio:1;border-radius:24px;background:#fff;border:2px solid #e2e8f0;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;position:relative;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);"
                         :style="mesa.estado==='Ocupada' ? 'border-color:#ef4444;background:#fff5f5;' : 'border-color:#10b981;background:#f0fdf4;'"
@@ -276,7 +276,7 @@ const cerrarTurno = () => router.post('/logout');
                 </div>
 
                 <!-- PANEL DE NOTIFICACIONES LATERAL -->
-                <aside style="width:320px;background:#fff;border-left:1px solid #e2e8f0;display:flex;flex-direction:column;flex-shrink:0;">
+                <aside class="notif-aside" style="width:320px;background:#fff;border-left:1px solid #e2e8f0;display:flex;flex-direction:column;flex-shrink:0;">
                     <div style="padding:20px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;background:#f8fafc;">
                         <h2 style="font-size:14px;font-weight:900;color:#0f172a;margin:0;">NOTIFICACIONES 🔔</h2>
                         <span style="background:#ef4444;color:#fff;font-size:10px;font-weight:900;padding:2px 8px;border-radius:10px;">{{ notificaciones.length }}</span>
@@ -302,10 +302,10 @@ const cerrarTurno = () => router.post('/logout');
             </div>
 
             <!-- VISTA: TOMA DE PEDIDO -->
-            <div v-if="vista==='pedido'" style="flex:1;display:flex;overflow:hidden;background:#fff;">
+            <div v-if="vista==='pedido'" class="pedido-layout" style="flex:1;display:flex;overflow:hidden;background:#fff;">
                 
                 <!-- Categorías Lateral -->
-                <nav style="width:100px;background:#f8fafc;border-right:1px solid #e2e8f0;display:flex;flex-direction:column;gap:10px;padding:15px 0;align-items:center;flex-shrink:0;">
+                <nav class="pedido-nav" style="width:100px;background:#f8fafc;border-right:1px solid #e2e8f0;display:flex;flex-direction:column;gap:10px;padding:15px 0;align-items:center;flex-shrink:0;">
                     <button @click="catActiva=null" 
                         style="width:70px;height:70px;border-radius:18px;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:0.2s;"
                         :style="catActiva===null ? 'background:#0f172a;color:#fff;' : 'background:transparent;color:#64748b;'">
@@ -321,7 +321,7 @@ const cerrarTurno = () => router.post('/logout');
                 </nav>
 
                 <!-- Grid de Productos -->
-                <div style="flex:1;padding:25px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));gap:20px;align-content:start;background:#f8fafc;">
+                <div class="productos-grid" style="flex:1;padding:25px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));gap:20px;align-content:start;background:#f8fafc;">
                     <div v-for="prod in menuFiltrado" :key="prod.id_producto" @click="agregar(prod)"
                         style="background:#fff;border-radius:20px;padding:15px;display:flex;flex-direction:column;align-items:center;cursor:pointer;transition:all 0.15s;border:1px solid #e2e8f0;box-shadow:0 2px 4px rgba(0,0,0,0.02);overflow:hidden;"
                         onmouseover="this.style.transform='scale(1.03)';this.style.borderColor='#0f172a'" onmouseout="this.style.transform='scale(1)';this.style.borderColor='#e2e8f0'">
@@ -335,7 +335,7 @@ const cerrarTurno = () => router.post('/logout');
                 </div>
 
                 <!-- Resumen Lateral -->
-                <div style="width:380px;background:#fff;border-left:1px solid #e2e8f0;display:flex;flex-direction:column;flex-shrink:0;">
+                <div class="pedido-resumen" style="width:380px;background:#fff;border-left:1px solid #e2e8f0;display:flex;flex-direction:column;flex-shrink:0;">
                     <div style="padding:25px;border-bottom:1px solid #f1f5f9;background:#f8fafc;">
                         <h3 style="margin:0;font-size:16px;font-weight:900;color:#0f172a;">DETALLE DEL PEDIDO</h3>
                         <p style="margin:4px 0 0 0;font-size:12px;color:#64748b;font-weight:700;">MESA {{ mesaActual?.id_mesa }}</p>
@@ -487,4 +487,74 @@ const cerrarTurno = () => router.post('/logout');
 }
 .slide-enter-active, .slide-leave-active { transition: all 0.4s ease; }
 .slide-enter-from, .slide-leave-to { transform: translateX(100px); opacity: 0; }
+
+/* Responsive styles */
+@media (max-width: 1024px) {
+    .pos-container {
+        height: auto !important;
+        min-height: 100vh !important;
+        overflow: auto !important;
+    }
+    .pos-main {
+        flex-direction: column !important;
+        overflow: visible !important;
+    }
+    .mesas-layout {
+        flex-direction: column !important;
+        overflow: visible !important;
+    }
+    .notif-aside {
+        width: 100% !important;
+        border-left: none !important;
+        border-top: 1px solid #e2e8f0 !important;
+        flex-shrink: unset !important;
+    }
+    .pedido-layout {
+        flex-direction: column !important;
+        overflow: visible !important;
+    }
+    .pedido-nav {
+        width: 100% !important;
+        flex-direction: row !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        padding: 10px 15px !important;
+        height: auto !important;
+        border-right: none !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+        justify-content: flex-start !important;
+        flex-wrap: nowrap !important;
+    }
+    .pedido-nav button {
+        width: 75px !important;
+        height: 75px !important;
+        flex-shrink: 0 !important;
+    }
+    .pedido-resumen {
+        width: 100% !important;
+        border-left: none !important;
+        border-top: 2px solid #e2e8f0 !important;
+        flex-shrink: unset !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .pos-header {
+        padding: 10px 15px !important;
+        height: auto !important;
+        min-height: 65px !important;
+        flex-wrap: wrap !important;
+        gap: 10px !important;
+    }
+    .mesas-grid {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+        padding: 15px !important;
+        gap: 15px !important;
+    }
+    .productos-grid {
+        grid-template-columns: repeat(auto-fill, minmax(115px, 1fr)) !important;
+        padding: 15px !important;
+        gap: 12px !important;
+    }
+}
 </style>

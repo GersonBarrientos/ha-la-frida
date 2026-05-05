@@ -100,10 +100,10 @@ const cerrarSesion = () => router.post('/logout');
 <template>
     <Head title="Monitor KDS — Ha La Frida" />
 
-    <div style="height:100vh;background:#f3f4f6;color:#111827;font-family:'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;">
+    <div class="kds-container" style="height:100vh;background:#f3f4f6;color:#111827;font-family:'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;">
 
         <!-- Header Cocina -->
-        <header style="background:#1f2937;color:#fff;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:65px;flex-shrink:0;">
+        <header class="kds-header" style="background:#1f2937;color:#fff;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:65px;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:15px;">
                 <span style="font-size:24px;">🌮</span>
                 <h1 style="font-size:18px;font-weight:900;margin:0;letter-spacing:-0.5px;">MONITOR COCINA (KDS)</h1>
@@ -111,7 +111,7 @@ const cerrarSesion = () => router.post('/logout');
             </div>
 
             <!-- Resumen de Totales Flotante (Horizontal) -->
-            <div style="display:flex;gap:12px;overflow-x:auto;max-width:50%;padding:0 10px;">
+            <div class="kds-totals" style="display:flex;gap:12px;overflow-x:auto;max-width:50%;padding:0 10px;">
                 <div v-for="(cant, prod) in totalesCocina" :key="prod" style="background:#374151;border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:8px;white-space:nowrap;">
                     <span style="font-weight:900;color:#10b981;">{{ cant }}x</span>
                     <span style="font-size:12px;font-weight:600;color:#fff;">{{ prod }}</span>
@@ -125,7 +125,7 @@ const cerrarSesion = () => router.post('/logout');
         </header>
 
         <!-- Tablero Kanban -->
-        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;background:#e5e7eb;overflow:hidden;">
+        <div class="kds-kanban" style="flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;background:#e5e7eb;overflow:hidden;">
 
             <!-- COLUMNA: NUEVAS -->
             <div style="display:flex;flex-direction:column;background:#fff;">
@@ -224,5 +224,42 @@ const cerrarSesion = () => router.post('/logout');
     0% { transform: scale(0.95); opacity: 0.5; }
     50% { transform: scale(1); opacity: 1; }
     100% { transform: scale(0.95); opacity: 0.5; }
+}
+
+/* Responsive styles */
+@media (max-width: 1024px) {
+    .kds-container {
+        height: auto !important;
+        min-height: 100vh !important;
+        overflow: auto !important;
+    }
+    .kds-kanban {
+        grid-template-columns: 1fr !important;
+        overflow: visible !important;
+        gap: 16px !important;
+        padding: 12px !important;
+        background: #f3f4f6 !important;
+    }
+    .kds-kanban > div {
+        border-radius: 14px !important;
+        overflow: hidden !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+        border: 1px solid #e5e7eb !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .kds-header {
+        height: auto !important;
+        padding: 12px 16px !important;
+        flex-wrap: wrap !important;
+        gap: 12px !important;
+    }
+    .kds-totals {
+        max-width: 100% !important;
+        width: 100% !important;
+        order: 3 !important;
+        padding: 4px 0 !important;
+    }
 }
 </style>

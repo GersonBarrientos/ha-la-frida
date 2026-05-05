@@ -303,7 +303,7 @@ const eliminarIngrediente = async (id) => {
     <div style="min-height:100vh;background:#f9fafb;font-family:'Segoe UI',system-ui,sans-serif;">
 
         <!-- Header -->
-        <header style="background:#fff;border-bottom:1px solid #e5e7eb;padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <header class="admin-header" style="background:#fff;border-bottom:1px solid #e5e7eb;padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
             <div style="display:flex;align-items:center;gap:10px;">
                 <span style="font-size:22px;">🌮</span>
                 <div>
@@ -329,12 +329,12 @@ const eliminarIngrediente = async (id) => {
             </button>
         </div>
 
-        <div style="padding:24px 28px;max-width:1400px;margin:0 auto;">
+        <div class="admin-container" style="padding:24px 28px;max-width:1400px;margin:0 auto;">
 
             <!-- DASHBOARD -->
             <div v-if="tab==='dashboard'">
                 <!-- KPI Cards -->
-                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+                <div class="kpi-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
                     <div v-for="card in [
                         { label:'Ventas Hoy', value: '$ '+(parseFloat(stats.ventas_hoy?.Ingresos_Totales||0).toFixed(2)), icon:'💰', color:'#16a34a', bg:'#f0fdf4' },
                         { label:'Facturas', value: stats.ventas_hoy?.Cantidad_Facturas||0, icon:'🧾', color:'#2563eb', bg:'#eff6ff' },
@@ -347,7 +347,7 @@ const eliminarIngrediente = async (id) => {
                     </div>
                 </div>
 
-                <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;">
+                <div class="charts-grid" style="display:grid;grid-template-columns:2fr 1fr;gap:24px;">
                     <!-- Gráfico de Tráfico -->
                     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
                         <h3 style="font-size:14px;font-weight:800;color:#111827;margin:0 0 20px 0;text-transform:uppercase;">📊 Tráfico de Pedidos por Hora</h3>
@@ -547,7 +547,7 @@ const eliminarIngrediente = async (id) => {
             <!-- PROFIT -->
             <div v-if="tab==='profit'">
                 <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;">Análisis de Rentabilidad Histórica</h2>
-                <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:24px;margin-bottom:30px;">
+                <div class="profit-grid" style="display:grid;grid-template-columns:repeat(3, 1fr);gap:24px;margin-bottom:30px;">
                     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:30px;text-align:center;">
                         <p style="font-size:12px;color:#64748b;font-weight:800;text-transform:uppercase;margin-bottom:10px;">Ingresos Totales (Ventas)</p>
                         <p style="font-size:36px;font-weight:900;color:#16a34a;margin:0;">${{ profitData.ingresos.toFixed(2) }}</p>
@@ -635,4 +635,38 @@ const eliminarIngrediente = async (id) => {
 <style scoped>
 .slide-enter-active,.slide-leave-active{transition:all .3s}
 .slide-enter-from,.slide-leave-to{opacity:0;transform:translateY(-10px)}
+
+/* Responsive styles */
+@media (max-width: 1024px) {
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+    .charts-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .profit-grid {
+        grid-template-columns: 1fr !important;
+        gap: 16px !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .admin-header {
+        padding: 10px 15px !important;
+        height: auto !important;
+        flex-wrap: wrap !important;
+        gap: 10px !important;
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
+    }
+    .admin-container {
+        padding: 16px 12px !important;
+    }
+    .kpi-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
 </style>

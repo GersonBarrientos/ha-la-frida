@@ -36,12 +36,12 @@ class AuthenticatedSessionController extends Controller
         $user = \Illuminate\Support\Facades\Auth::user();
         $rol = strtolower(optional(optional($user)->rol)->descripcion ?? '');
 
-        if ($rol === 'admin') {
-            return redirect()->intended('/admin');
-        } elseif ($rol === 'mesero') {
-            return redirect()->intended('/mesero');
-        } elseif ($rol === 'cocinero') {
-            return redirect()->intended('/cocina');
+        if ($rol === 'admin' || $user->id_rol == 1) {
+            return redirect('/admin');
+        } elseif ($rol === 'mesero' || $user->id_rol == 2) {
+            return redirect('/mesero');
+        } elseif (in_array($rol, ['cocinero', 'cocina']) || $user->id_rol == 3) {
+            return redirect('/cocina');
         }
 
         return redirect()->intended(route('dashboard', absolute: false));

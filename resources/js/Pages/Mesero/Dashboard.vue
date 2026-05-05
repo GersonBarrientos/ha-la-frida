@@ -209,7 +209,7 @@ const finalizarTodo = () => {
     montoRecibido.value = '';
 };
 
-const cerrarTurno = () => router.post(route('logout'));
+const cerrarTurno = () => router.post('/logout');
 </script>
 
 <template>

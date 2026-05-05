@@ -315,7 +315,7 @@ const eliminarIngrediente = async (id) => {
                 <div v-if="criticos.length > 0" style="background:#fef3c7;border:1px solid #fbbf24;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;color:#92400e;">
                     ⚠️ {{ criticos.length }} críticos
                 </div>
-                <button @click="router.post(route('logout'))" style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;color:#374151;cursor:pointer;">Salir</button>
+                <button @click="router.post('/logout')" style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;color:#374151;cursor:pointer;">Salir</button>
             </div>
         </header>
 

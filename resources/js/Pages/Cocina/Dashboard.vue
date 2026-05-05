@@ -94,7 +94,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => clearInterval(pollingInterval));
-const cerrarSesion = () => router.post(route('logout'));
+const cerrarSesion = () => router.post('/logout');
 </script>
 
 <template>

@@ -1,139 +1,116 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
 
 const props = defineProps({ auth: { type: Object } });
 
 // State
-const vista = ref('mesas'); // 'mesas' | 'pedido'
+const vista = ref('mesas'); 
 const mesas = ref([]);
 const menu = ref([]);
 const categorias = ref([]);
 const catActiva = ref(null);
 const mesaActual = ref(null);
 const orden = ref([]);
-const clienteNombre = ref('');
-const clienteNit = ref('');
 const loading = ref(false);
 const notif = ref(null);
 const modalCobro = ref(false);
 const pedidoActivo = ref(null);
 const metodoPago = ref('Efectivo');
-const montoRecibido = ref('');
 const cobrandoLoad = ref(false);
+const kitchenLoad = ref({ nivel: 'Bajo', total_items: 0, tiempo_estimado: 0 });
+const waiterNotifications = ref([]);
+const alarmasActivas = ref({}); // id_detalle -> timestamp_listo
 
-// Comunicación Tiempo Real
-const estadosMesas = ref({}); // { mesaId: { cooking: 0, ready: 0, total: 0 } }
-const notificaciones = ref([]); // [{ id, mesa, producto, hora }]
-let statusInterval = null;
-
-const playBell = () => {
-    try {
-        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-        audio.play();
-    } catch (e) {}
+// Toast system
+const toast = (msg, tipo = 'ok') => { 
+    notif.value = { msg, tipo }; 
+    setTimeout(() => notif.value = null, 4000); 
 };
 
-const toast = (msg, tipo='ok') => { notif.value = {msg,tipo}; setTimeout(()=>notif.value=null, 4000); };
-
-const fetchInitialData = async () => {
-    const [m, mn, c] = await Promise.all([
-        axios.get('/api/mesero/mesas'),
-        axios.get('/api/mesero/menu'),
-        axios.get('/api/admin/categorias'),
-    ]);
-    mesas.value = m.data;
-    menu.value = mn.data;
-    categorias.value = c.data;
-    updateRealTimeStatus();
+// Audio for Alarms
+const playSound = (type = 'ready') => {
+    const audio = new Audio(type === 'ready' ? '/sounds/notification.mp3' : '/sounds/alarm.mp3');
+    audio.play().catch(e => console.log('Audio blocked by browser'));
 };
 
-const updateRealTimeStatus = async () => {
+const refreshData = async () => {
     try {
-        const res = await axios.get('/api/cocina/orders');
-        const orders = res.data;
-        const newStatus = {};
-        const nuevasNotifs = [];
+        const [mRes, kRes, nRes] = await Promise.all([
+            axios.get('/api/mesero/mesas'),
+            axios.get('/api/mesero/get-kitchen-load'),
+            axios.get('/api/mesero/get-notifications')
+        ]);
+        mesas.value = mRes.data;
+        kitchenLoad.value = kRes.data;
         
-        orders.forEach(o => {
-            const mId = o.id_mesa;
-            if (!newStatus[mId]) newStatus[mId] = { cooking: 0, ready: 0, total: 0, items: [] };
-            
-            o.detalles.forEach(d => {
-                if (d.estado_cocina === 'Recibido' || d.estado_cocina === 'En Preparación') newStatus[mId].cooking++;
-                if (d.estado_cocina === 'Listo') {
-                    newStatus[mId].ready++;
-                    // Si es una nueva notificación de "Listo"
-                    const exists = notificaciones.value.find(n => n.id_detalle === d.id_detalle);
-                    if (!exists) {
-                        nuevasNotifs.push({
-                            id_detalle: d.id_detalle,
-                            mesa: mId,
-                            producto: d.producto.nombre_prod,
-                            hora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                        });
-                    }
+        // Check for new "Listo" statuses to trigger sound
+        nRes.data.forEach(n => {
+            const old = waiterNotifications.value.find(prev => prev.id_detalle === n.id_detalle);
+            if (n.estado_cocina === 'Listo' && (!old || old.estado_cocina !== 'Listo')) {
+                playSound('ready');
+                if (!alarmasActivas.value[n.id_detalle]) {
+                    alarmasActivas.value[n.id_detalle] = Date.now();
                 }
-                newStatus[mId].total += d.cantidad * parseFloat(d.precio_unitario);
-                newStatus[mId].items.push(d);
-            });
+            }
         });
-
-        if (nuevasNotifs.length > 0) {
-            notificaciones.value = [...nuevasNotifs, ...notificaciones.value].slice(0, 15);
-            playBell();
-            toast(`🔔 ${nuevasNotifs.length} nuevo(s) pedido(s) listos`);
-        }
-        estadosMesas.value = newStatus;
-    } catch(e) {}
+        waiterNotifications.value = nRes.data;
+    } catch (e) { console.error('Error refreshing mesero data'); }
 };
 
-onMounted(() => {
-    fetchInitialData();
-    statusInterval = setInterval(() => {
-        updateRealTimeStatus();
-        if (vista.value === 'mesas') axios.get('/api/mesero/mesas').then(r => mesas.value = r.data);
-    }, 4000);
+let pollInterval = null;
+let alarmInterval = null;
+
+onMounted(async () => {
+    const [menuRes, catsRes] = await Promise.all([
+        axios.get('/api/mesero/menu'),
+        axios.get('/api/admin/categorias')
+    ]);
+    menu.value = menuRes.data;
+    categorias.value = catsRes.data;
+    refreshData();
+    pollInterval = setInterval(refreshData, 8000);
+
+    // Alarm checker loop
+    alarmInterval = setInterval(() => {
+        const now = Date.now();
+        Object.keys(alarmasActivas.value).forEach(id => {
+            const diff = (now - alarmasActivas.value[id]) / 1000 / 60; // min
+            if (diff >= 2) {
+                playSound('alarm');
+                toast(`🚨 ¡Mesa con orden lista hace más de 2 min!`, 'err');
+            }
+        });
+    }, 15000);
 });
 
-onUnmounted(() => clearInterval(statusInterval));
+onUnmounted(() => {
+    clearInterval(pollInterval);
+    clearInterval(alarmInterval);
+});
 
-// Computed
-const menuFiltrado = computed(() => catActiva.value ? menu.value.filter(p => p.id_categoria == catActiva.value) : menu.value);
-const totalOrden = computed(() => orden.value.reduce((s, i) => s + i.cant * parseFloat(i.producto.precio), 0));
-const totalCobro = computed(() => pedidoActivo.value?.detalles?.reduce((s,d) => s + d.cantidad * parseFloat(d.precio_unitario), 0) ?? 0);
-const cambio = computed(() => Math.max(0, parseFloat(montoRecibido.value || 0) - totalCobro.value));
-
-const getCatEmoji = (nombre) => {
-    const n = nombre.toLowerCase();
-    if (n.includes('taco')) return '🌮';
-    if (n.includes('bebida')) return '🥤';
-    if (n.includes('postre')) return '🍰';
-    if (n.includes('entrada')) return '🥗';
-    return '🍽️';
-};
-
-// Acciones
-const seleccionarMesa = async (mesa) => {
-    mesaActual.value = mesa;
-    if (mesa.estado === 'Ocupada') {
-        const res = await axios.get(`/api/mesero/pedido-activo/${mesa.id_mesa}`);
+const selectMesa = async (m) => {
+    mesaActual.value = m;
+    if (m.estado === 'Ocupada') {
+        const res = await axios.get(`/api/mesero/pedido-activo/${m.id_mesa}`);
         pedidoActivo.value = res.data;
-        clienteNombre.value = pedidoActivo.value?.nombre_cliente || '';
-        clienteNit.value = pedidoActivo.value?.nit_cliente || '';
-        modalCobro.value = true;
     } else {
+        pedidoActivo.value = null;
         orden.value = [];
-        clienteNombre.value = '';
-        clienteNit.value = '';
-        vista.value = 'pedido';
     }
+    vista.value = 'pedido';
 };
 
-const agregar = (prod) => {
+const menuFiltrado = computed(() => {
+    if (!catActiva.value) return menu.value;
+    return menu.value.filter(p => p.id_categoria === catActiva.value);
+});
+
+const addToOrder = (prod) => {
     const item = orden.value.find(i => i.id_producto === prod.id_producto);
-    if (item) { item.cant++; } else { orden.value.push({ id_producto: prod.id_producto, producto: prod, cant: 1, notas: '' }); }
+    if (item) { item.cant++; } 
+    else { orden.value.push({ id_producto: prod.id_producto, producto: prod, cant: 1, notas: '' }); }
 };
 
 const enviarOrden = async () => {
@@ -142,14 +119,17 @@ const enviarOrden = async () => {
     try {
         await axios.post('/api/mesero/order', {
             id_mesa: mesaActual.value.id_mesa,
-                        items: orden.value.map(i => ({ id_producto: i.id_producto, cantidad: i.cant, notas: i.notas }))
+            items: orden.value.map(i => ({ id_producto: i.id_producto, cantidad: i.cant, notas: i.notas }))
         });
         toast('✅ Enviado a cocina');
         vista.value = 'mesas';
+        refreshData();
     } catch (e) {
-        toast('⚠️ ' + (e.response?.data?.message || 'Error'), 'warn');
+        toast('⚠️ ' + (e.response?.data?.message || 'Error'), 'err');
     } finally { loading.value = false; }
 };
+
+const totalOrden = computed(() => orden.value.reduce((acc, i) => acc + (i.producto.precio * i.cant), 0));
 
 const factGenerada = ref(null);
 const procesarCobro = async () => {
@@ -161,293 +141,319 @@ const procesarCobro = async () => {
         });
         factGenerada.value = res.data.factura;
         toast('✅ Pago procesado');
+        refreshData();
     } catch (e) { toast('❌ Error al cobrar', 'err'); }
     finally { cobrandoLoad.value = false; }
+};
+
+const printTicket = () => {
+    window.print();
 };
 
 const finalizarTodo = () => {
     modalCobro.value = false;
     factGenerada.value = null;
     pedidoActivo.value = null;
-    montoRecibido.value = '';
+    vista.value = 'mesas';
+};
+
+const markAsDelivered = (id_detalle) => {
+    delete alarmasActivas.value[id_detalle];
+    // Aquí podríamos llamar a un endpoint para marcar como entregado si existiera
+    toast('Plato entregado ✓');
 };
 
 const cerrarTurno = () => router.post(route('logout'));
 </script>
 
 <template>
-    <Head title="Mesero POS — Ha La Frida" />
-
-    <!-- Notificaciones Flotantes -->
-    <Transition name="slide">
-        <div v-if="notif" style="position:fixed;top:20px;right:20px;z-index:9999;padding:15px 25px;border-radius:12px;color:#fff;font-weight:800;box-shadow:0 10px 30px rgba(0,0,0,0.2);display:flex;align-items:center;gap:10px;"
-            :style="notif.tipo==='err'?'background:#ef4444;':'background:#10b981;'">
-            <span>{{ notif.msg }}</span>
-        </div>
-    </Transition>
-
-    <div style="height:100vh;background:#f8fafc;display:flex;flex-direction:column;font-family:'Inter',system-ui,sans-serif;overflow:hidden;">
-        
-        <!-- Header POS -->
-        <header style="background:#fff;border-bottom:1px solid #e2e8f0;height:65px;display:flex;align-items:center;justify-content:space-between;padding:0 25px;flex-shrink:0;">
-            <div style="display:flex;align-items:center;gap:20px;">
-                <button v-if="vista==='pedido'" @click="vista='mesas'" style="background:#f1f5f9;border:none;border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">🏠</button>
-                <div v-else style="font-size:24px;">🌮</div>
-                <div>
-                    <h1 style="font-size:18px;font-weight:900;color:#0f172a;margin:0;">{{ vista==='mesas'?'Panel de Mesas':'Nuevo Pedido' }}</h1>
-                    <p style="font-size:11px;color:#64748b;margin:0;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Ha La Frida · Terminal {{ auth.user.id_usuario }}</p>
+    <Head title="Mesero Dashboard" />
+    
+    <div class="app-container">
+        <!-- Sidebar Notificaciones -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h3>🔔 Notificaciones</h3>
+                <div class="kitchen-badge" :class="kitchenLoad.nivel">
+                    Cocina: {{ kitchenLoad.nivel }}
                 </div>
             </div>
-
-            <div style="display:flex;align-items:center;gap:15px;">
-                <div style="text-align:right;">
-                    <p style="margin:0;font-size:14px;font-weight:800;color:#0f172a;">{{ auth.user.nombre_completo }}</p>
-                    <p style="margin:0;font-size:11px;color:#10b981;font-weight:700;">EN LÍNEA</p>
+            
+            <div class="notif-list">
+                <div v-for="n in waiterNotifications" :key="n.id_detalle" class="notif-item" :class="n.estado_cocina">
+                    <div class="notif-info">
+                        <strong>Mesa {{ n.id_mesa }}</strong>
+                        <span>{{ n.nombre_prod }}</span>
+                    </div>
+                    <div class="notif-status">
+                        <span class="status-pill">{{ n.estado_cocina }}</span>
+                        <button v-if="n.estado_cocina === 'Listo'" @click="markAsDelivered(n.id_detalle)" class="btn-check">✓</button>
+                    </div>
                 </div>
-                <button @click="cerrarTurno" style="background:#fee2e2;border:none;color:#ef4444;width:40px;height:40px;border-radius:10px;cursor:pointer;font-size:18px;">🚪</button>
+                <p v-if="!waiterNotifications.length" class="empty-msg">No hay órdenes activas</p>
             </div>
-        </header>
+        </aside>
 
         <!-- Main Content -->
-        <main style="flex:1;display:flex;overflow:hidden;">
-            
-            <!-- VISTA: MAPA DE MESAS + PANEL NOTIF -->
-            <div v-if="vista==='mesas'" style="flex:1;display:flex;overflow:hidden;">
-                
-                <!-- Mapa de Mesas -->
-                <div style="flex:1;padding:30px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:25px;align-content:start;">
-                    <div v-for="mesa in mesas" :key="mesa.id_mesa" @click="seleccionarMesa(mesa)"
-                        style="aspect-ratio:1;border-radius:24px;background:#fff;border:2px solid #e2e8f0;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;position:relative;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);"
-                        :style="mesa.estado==='Ocupada' ? 'border-color:#ef4444;background:#fff5f5;' : 'border-color:#10b981;background:#f0fdf4;'"
-                        onmouseover="this.style.transform='translateY(-5px)';this.style.boxShadow='0 20px 25px -5px rgba(0,0,0,0.1)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 6px -1px rgba(0,0,0,0.05)'">
-                        
-                        <!-- Indicadores Rápidos -->
-                        <div v-if="estadosMesas[mesa.id_mesa]" style="position:absolute;top:15px;right:15px;display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
-                            <div v-if="estadosMesas[mesa.id_mesa].ready > 0" style="background:#10b981;color:#fff;font-size:10px;font-weight:900;padding:4px 8px;border-radius:8px;animation:pulse 1s infinite;">
-                                🔔 {{ estadosMesas[mesa.id_mesa].ready }} LISTO
-                            </div>
-                        </div>
-
-                        <span style="font-size:40px;margin-bottom:10px;">{{ mesa.estado==='Ocupada'?'👨‍👩‍👧‍👦':'🪑' }}</span>
-                        <h3 style="margin:0;font-size:24px;font-weight:900;color:#0f172a;">{{ mesa.id_mesa }}</h3>
-                        <p style="margin:5px 0 0 0;font-size:12px;font-weight:700;color:#64748b;">{{ mesa.capacidad }} PAX</p>
-                        
-                        <div v-if="mesa.estado==='Ocupada'" style="margin-top:15px;background:#ef4444;color:#fff;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:800;">
-                            ${{ estadosMesas[mesa.id_mesa]?.total.toFixed(2) || '0.00' }}
-                        </div>
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="user-info">
+                    <span class="avatar">🤵</span>
+                    <div>
+                        <h2>¡Hola, {{ auth.user.nombre_completo }}!</h2>
+                        <p>Panel de Mesero</p>
                     </div>
                 </div>
+                <button @click="cerrarTurno" class="btn-logout">Cerrar Sesión</button>
+            </header>
 
-                <!-- PANEL DE NOTIFICACIONES LATERAL -->
-                <aside style="width:320px;background:#fff;border-left:1px solid #e2e8f0;display:flex;flex-direction:column;flex-shrink:0;">
-                    <div style="padding:20px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;background:#f8fafc;">
-                        <h2 style="font-size:14px;font-weight:900;color:#0f172a;margin:0;">NOTIFICACIONES 🔔</h2>
-                        <span style="background:#ef4444;color:#fff;font-size:10px;font-weight:900;padding:2px 8px;border-radius:10px;">{{ notificaciones.length }}</span>
+            <div v-if="vista === 'mesas'" class="content-body fade-in">
+                <div class="section-title">
+                    <h3>Selecciona una Mesa</h3>
+                    <span>{{ mesas.filter(m=>m.estado==='Libre').length }} Libres / {{ mesas.length }} Total</span>
+                </div>
+                
+                <div class="mesas-grid">
+                    <div v-for="m in mesas" :key="m.id_mesa" 
+                        class="mesa-card" 
+                        :class="m.estado"
+                        @click="selectMesa(m)">
+                        <div class="mesa-number">{{ m.id_mesa }}</div>
+                        <div class="mesa-status">{{ m.estado }}</div>
+                        <div class="mesa-cap">Cap. {{ m.capacidad }}</div>
                     </div>
-                    <div style="flex:1;overflow-y:auto;padding:15px;display:flex;flex-direction:column;gap:10px;">
-                        <div v-if="notificaciones.length === 0" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0.4;text-align:center;">
-                            <span style="font-size:40px;margin-bottom:10px;">📭</span>
-                            <p style="font-size:13px;font-weight:700;">Sin avisos recientes</p>
-                        </div>
-                        <div v-for="n in notificaciones" :key="n.id_detalle" 
-                            style="background:#f0fdf4;border-left:4px solid #10b981;padding:12px;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,0.03);animation:slideIn 0.3s ease-out;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-                                <span style="font-size:16px;font-weight:900;color:#15803d;">MESA {{ n.mesa }}</span>
-                                <span style="font-size:10px;color:#94a3b8;font-weight:700;">{{ n.hora }}</span>
-                            </div>
-                            <p style="margin:0;font-size:13px;font-weight:700;color:#334155;">¡{{ n.producto }} está LISTO!</p>
-                        </div>
-                    </div>
-                    <div style="padding:15px;background:#f8fafc;border-top:1px solid #f1f5f9;">
-                         <button @click="notificaciones = []" style="width:100%;background:transparent;border:1px solid #e2e8f0;color:#64748b;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">Limpiar historial</button>
-                    </div>
-                </aside>
+                </div>
             </div>
 
-            <!-- VISTA: TOMA DE PEDIDO -->
-            <div v-if="vista==='pedido'" style="flex:1;display:flex;overflow:hidden;background:#fff;">
+            <div v-else class="content-body fade-in">
+                <button @click="vista='mesas'" class="btn-back">← Volver a Mesas</button>
                 
-                <!-- Categorías Lateral -->
-                <nav style="width:100px;background:#f8fafc;border-right:1px solid #e2e8f0;display:flex;flex-direction:column;gap:10px;padding:15px 0;align-items:center;flex-shrink:0;">
-                    <button @click="catActiva=null" 
-                        style="width:70px;height:70px;border-radius:18px;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:0.2s;"
-                        :style="catActiva===null ? 'background:#0f172a;color:#fff;' : 'background:transparent;color:#64748b;'">
-                        <span style="font-size:24px;">📦</span>
-                        <span style="font-size:9px;font-weight:800;margin-top:4px;">TODOS</span>
-                    </button>
-                    <button v-for="cat in categorias" :key="cat.id_categoria" @click="catActiva=cat.id_categoria"
-                        style="width:70px;height:70px;border-radius:18px;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:0.2s;"
-                        :style="catActiva===cat.id_categoria ? 'background:#0f172a;color:#fff;' : 'background:transparent;color:#64748b;'">
-                        <span style="font-size:24px;">{{ getCatEmoji(cat.nombre_cat) }}</span>
-                        <span style="font-size:9px;font-weight:800;margin-top:4px;text-transform:uppercase;">{{ cat.nombre_cat }}</span>
-                    </button>
-                </nav>
-
-                <!-- Grid de Productos -->
-                <div style="flex:1;padding:25px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));gap:20px;align-content:start;background:#f8fafc;">
-                    <div v-for="prod in menuFiltrado" :key="prod.id_producto" @click="agregar(prod)"
-                        style="background:#fff;border-radius:20px;padding:15px;display:flex;flex-direction:column;align-items:center;cursor:pointer;transition:all 0.15s;border:1px solid #e2e8f0;box-shadow:0 2px 4px rgba(0,0,0,0.02);overflow:hidden;"
-                        onmouseover="this.style.transform='scale(1.03)';this.style.borderColor='#0f172a'" onmouseout="this.style.transform='scale(1)';this.style.borderColor='#e2e8f0'">
-                        <div style="width:100%;aspect-ratio:1.2;background:#f1f5f9;border-radius:12px;margin-bottom:12px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
-                            <img v-if="prod.url_imagen" :src="prod.url_imagen" style="width:100%;height:100%;object-fit:cover;">
-                            <span v-else style="font-size:40px;">{{ getCatEmoji(prod.categoria?.nombre_cat || '') }}</span>
+                <div class="order-layout">
+                    <!-- Menu Side -->
+                    <div class="menu-section">
+                        <div class="cat-bar">
+                            <button @click="catActiva=null" :class="{active: !catActiva}">Todos</button>
+                            <button v-for="c in categorias" :key="c.id_categoria" 
+                                @click="catActiva=c.id_categoria"
+                                :class="{active: catActiva===c.id_categoria}">
+                                {{ c.nombre_cat }}
+                            </button>
                         </div>
-                        <h4 style="margin:0;font-size:14px;font-weight:800;color:#0f172a;text-align:center;">{{ prod.nombre_prod }}</h4>
-                        <p style="margin:8px 0 0 0;font-size:16px;font-weight:900;color:#10b981;">${{ parseFloat(prod.precio).toFixed(2) }}</p>
-                    </div>
-                </div>
-
-                <!-- Resumen Lateral -->
-                <div style="width:380px;background:#fff;border-left:1px solid #e2e8f0;display:flex;flex-direction:column;flex-shrink:0;">
-                    <div style="padding:25px;border-bottom:1px solid #f1f5f9;background:#f8fafc;">
-                        <h3 style="margin:0;font-size:16px;font-weight:900;color:#0f172a;">DETALLE DEL PEDIDO</h3>
-                        <p style="margin:4px 0 0 0;font-size:12px;color:#64748b;font-weight:700;">MESA {{ mesaActual?.id_mesa }}</p>
-                    </div>
-
-                    <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;">
-                        <div v-if="!orden.length" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#cbd5e1;opacity:0.6;">
-                            <span style="font-size:60px;margin-bottom:15px;">🛒</span>
-                            <p style="font-weight:800;">La canasta está vacía</p>
-                        </div>
-                        <div v-for="(item, idx) in orden" :key="idx" style="background:#f8fafc;border-radius:15px;padding:15px;">
-                            <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
-                                <span style="font-weight:800;font-size:14px;">{{ item.cant }}x {{ item.producto.nombre_prod }}</span>
-                                <span style="font-weight:900;color:#10b981;">${{ (item.cant * item.producto.precio).toFixed(2) }}</span>
-                            </div>
-                            <div style="display:flex;gap:10px;align-items:center;">
-                                <div style="display:flex;background:#fff;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;">
-                                    <button @click="item.cant > 1 ? item.cant-- : orden.splice(idx,1)" style="width:30px;height:30px;border:none;background:#fff;cursor:pointer;">-</button>
-                                    <div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;">{{ item.cant }}</div>
-                                    <button @click="item.cant++" style="width:30px;height:30px;border:none;background:#fff;cursor:pointer;">+</button>
+                        
+                        <div class="menu-grid">
+                            <div v-for="p in menuFiltrado" :key="p.id_producto" class="product-card" @click="addToOrder(p)">
+                                <div class="prod-img" :style="{ backgroundImage: `url(${p.url_imagen || '/img/default-food.png'})` }"></div>
+                                <div class="prod-info">
+                                    <h4>{{ p.nombre_prod }}</h4>
+                                    <span class="price">$ {{ p.precio }}</span>
                                 </div>
-                                <input v-model="item.notas" type="text" placeholder="Nota especial..." style="flex:1;background:transparent;border:none;border-bottom:1px solid #e2e8f0;font-size:12px;padding:5px;outline:none;">
-                            </div>
-                            <div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;">
-                                <button v-for="mod in ['Sin cebolla','Extra picante','Para llevar','Bien cocido']" :key="mod" 
-                                    @click="item.notas = item.notas ? item.notas + ', ' + mod : mod"
-                                    style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:9px;font-weight:800;color:#64748b;cursor:pointer;">+ {{ mod }}</button>
                             </div>
                         </div>
                     </div>
 
-                    <div style="padding:25px;border-top:2px solid #f1f5f9;background:#fff;">
-                        <div style="padding:15px;background:#f0fdf4;border-radius:15px;margin-bottom:20px;">
-                            <p style="margin:0 0 10px 0;font-size:10px;font-weight:900;color:#15803d;text-transform:uppercase;">Información del Cliente</p>
-                            <input v-model="clienteNombre" placeholder="Nombre" style="width:100%;background:#fff;border:1px solid #dcfce7;border-radius:8px;padding:10px;margin-bottom:8px;font-size:13px;outline:none;">
-                            <input v-model="clienteNit" placeholder="NIT / C.F." style="width:100%;background:#fff;border:1px solid #dcfce7;border-radius:8px;padding:10px;font-size:13px;outline:none;">
+                    <!-- Order Summary -->
+                    <div class="order-summary">
+                        <h3>Comanda Mesa {{ mesaActual.id_mesa }}</h3>
+                        
+                        <div v-if="mesaActual.estado === 'Ocupada'" class="active-pedido">
+                            <div class="status-banner">Pedido en curso: <strong>{{ pedidoActivo?.estado_pedido }}</strong></div>
+                            <div class="active-items">
+                                <div v-for="d in pedidoActivo?.detalles" :key="d.id_detalle" class="active-item">
+                                    <span>{{ d.cantidad }}x {{ d.producto?.nombre_prod }}</span>
+                                    <span class="badge" :class="d.estado_cocina">{{ d.estado_cocina }}</span>
+                                </div>
+                            </div>
+                            <button @click="modalCobro=true" class="btn-cobrar">Cobrar Cuenta</button>
                         </div>
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-                            <span style="font-size:14px;font-weight:700;color:#64748b;">TOTAL A PAGAR</span>
-                            <span style="font-size:32px;font-weight:900;color:#0f172a;">${{ totalOrden.toFixed(2) }}</span>
+
+                        <div v-else class="new-order">
+                            <div class="order-items">
+                                <div v-for="item in orden" :key="item.id_producto" class="order-item">
+                                    <div class="item-main">
+                                        <span>{{ item.cant }}x {{ item.producto.nombre_prod }}</span>
+                                        <strong>$ {{ (item.producto.precio * item.cant).toFixed(2) }}</strong>
+                                    </div>
+                                    <input v-model="item.notas" placeholder="Notas (ej. sin picante)" class="note-input" />
+                                </div>
+                                <p v-if="!orden.length" class="empty-order">La orden está vacía</p>
+                            </div>
+                            
+                            <div class="order-footer">
+                                <div class="total-row">
+                                    <span>Total:</span>
+                                    <strong>$ {{ totalOrden.toFixed(2) }}</strong>
+                                </div>
+                                <button @click="enviarOrden" :disabled="!orden.length || loading" class="btn-send">
+                                    {{ loading ? 'Enviando...' : 'Enviar a Cocina' }}
+                                </button>
+                            </div>
                         </div>
-                        <button @click="enviarOrden" :disabled="loading || !orden.length"
-                            style="width:100%;height:60px;background:#0f172a;color:#fff;border:none;border-radius:18px;font-size:18px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:0.2s;"
-                            onmouseover="this.style.background='#1e293b'" onmouseout="this.style.background='#0f172a'">
-                            {{ loading ? '...' : 'ENVIAR A COCINA 🚀' }}
-                        </button>
                     </div>
                 </div>
             </div>
         </main>
 
-        <!-- MODAL COBRO -->
-        <Teleport to="body">
-            <div v-if="modalCobro" style="position:fixed;inset:0;background:rgba(15,23,42,0.8);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(5px);">
-                <div v-if="!factGenerada" style="background:#fff;width:100%;max-width:500px;border-radius:30px;overflow:hidden;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);">
-                    <div style="padding:30px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
-                        <div>
-                            <h2 style="margin:0;font-size:22px;font-weight:900;color:#0f172a;">CUENTA MESA {{ mesaActual?.id_mesa }}</h2>
-                            <p style="margin:5px 0 0 0;font-size:12px;color:#64748b;font-weight:700;">Ticket #{{ pedidoActivo?.id_pedido }}</p>
-                        </div>
-                        <button @click="modalCobro=false" style="width:40px;height:40px;border-radius:50%;border:none;background:#fff;cursor:pointer;">✕</button>
+        <!-- Notification Toast -->
+        <div v-if="notif" class="toast" :class="notif.tipo">
+            {{ notif.msg }}
+        </div>
+
+        <!-- Modal Cobro -->
+        <div v-if="modalCobro" class="modal-overlay">
+            <div class="modal-content">
+                <div v-if="!factGenerada">
+                    <h2>Cobrar Mesa {{ mesaActual.id_mesa }}</h2>
+                    <p>Total a pagar: <strong class="total-big">$ {{ pedidoActivo?.detalles.reduce((a,b)=>a+(b.cantidad*b.precio_unitario),0).toFixed(2) }}</strong></p>
+                    
+                    <div class="form-group">
+                        <label>Método de Pago</label>
+                        <select v-model="metodoPago" class="modern-select">
+                            <option value="Efectivo">💵 Efectivo</option>
+                            <option value="Tarjeta">💳 Tarjeta</option>
+                            <option value="Transferencia">📱 Transferencia</option>
+                        </select>
                     </div>
 
-                    <div style="padding:30px;">
-                        <!-- Status de los platos -->
-                        <div style="margin-bottom:25px;display:flex;gap:10px;overflow-x:auto;">
-                            <div v-for="d in pedidoActivo?.detalles" :key="d.id_detalle" 
-                                style="flex-shrink:0;width:100px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:15px;padding:10px;text-align:center;">
-                                <div style="font-size:20px;">
-                                     <img v-if="d.producto?.url_imagen" :src="d.producto.url_imagen" style="width:30px;height:30px;border-radius:50%;object-fit:cover;">
-                                     <span v-else>{{ getCatEmoji(d.producto?.categoria?.nombre_cat || '') }}</span>
-                                </div>
-                                <p style="margin:5px 0;font-size:10px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ d.producto.nombre_prod }}</p>
-                                <span :style="d.estado_cocina==='Listo'?'color:#10b981;':'color:#f59e0b;'" style="font-size:9px;font-weight:900;text-transform:uppercase;">{{ d.estado_cocina }}</span>
-                            </div>
-                        </div>
-
-                        <div style="background:#f0fdf4;border:2px dashed #10b981;border-radius:20px;padding:25px;text-align:center;margin-bottom:25px;">
-                            <p style="margin:0;font-size:14px;font-weight:700;color:#15803d;">TOTAL A COBRAR</p>
-                            <h3 style="margin:10px 0;font-size:48px;font-weight:900;color:#0f172a;">${{ totalCobro.toFixed(2) }}</h3>
-                        </div>
-
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:25px;">
-                            <button @click="metodoPago='Efectivo'" 
-                                style="height:60px;border-radius:15px;border:2px solid #e2e8f0;background:#fff;font-weight:800;cursor:pointer;transition:0.2s;"
-                                :style="metodoPago==='Efectivo'?'border-color:#10b981;background:#f0fdf4;':''">💵 EFECTIVO</button>
-                            <button @click="metodoPago='Tarjeta'" 
-                                style="height:60px;border-radius:15px;border:2px solid #e2e8f0;background:#fff;font-weight:800;cursor:pointer;transition:0.2s;"
-                                :style="metodoPago==='Tarjeta'?'border-color:#10b981;background:#f0fdf4;':''">💳 TARJETA</button>
-                        </div>
-
-                        <div v-if="metodoPago==='Efectivo'" style="margin-bottom:25px;">
-                            <label style="display:block;margin-bottom:10px;font-size:12px;font-weight:800;color:#64748b;">¿CUÁNTO RECIBIÓ?</label>
-                            <input v-model="montoRecibido" type="number" placeholder="0.00" style="width:100%;height:55px;border-radius:15px;border:2px solid #e2e8f0;padding:0 20px;font-size:24px;font-weight:900;outline:none;box-sizing:border-box;">
-                            <div v-if="parseFloat(montoRecibido) > 0" style="margin-top:15px;display:flex;justify-content:space-between;align-items:center;">
-                                <span style="font-weight:800;color:#64748b;">CAMBIO:</span>
-                                <span style="font-size:24px;font-weight:900;color:#10b981;">${{ cambio.toFixed(2) }}</span>
-                            </div>
-                        </div>
-
-                        <button @click="procesarCobro" :disabled="cobrandoLoad"
-                            style="width:100%;height:65px;background:#10b981;color:#fff;border:none;border-radius:20px;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 10px 15px -3px rgba(16,185,129,0.3);">
-                            {{ cobrandoLoad ? 'PROCESANDO...' : 'FINALIZAR Y FACTURAR ✓' }}
+                    <div class="modal-btns">
+                        <button @click="modalCobro=false" class="btn-sec">Cancelar</button>
+                        <button @click="procesarCobro" :disabled="cobrandoLoad" class="btn-prim">
+                            {{ cobrandoLoad ? 'Procesando...' : 'Confirmar Pago' }}
                         </button>
                     </div>
                 </div>
-
-                <!-- TICKET / FACTURA -->
-                <div v-else style="background:#fff;padding:40px;width:100%;max-width:380px;border-radius:4px;box-shadow:0 10px 30px rgba(0,0,0,0.1);font-family:'Courier New', monospace;color:#000;">
-                    <div style="text-align:center;border-bottom:1px dashed #000;padding-bottom:15px;margin-bottom:15px;">
-                        <h2 style="margin:0;font-size:20px;">HA LA FRIDA</h2>
-                        <p style="margin:4px 0;font-size:12px;">Antigua Comida Mexicana</p>
-                    </div>
-                    
-                    <div style="font-size:13px;margin-bottom:15px;">
-                        <p style="margin:2px 0;"><strong>NUM:</strong> {{ factGenerada.numero_factura }}</p>
-                        <p style="margin:2px 0;"><strong>CLIENTE:</strong> {{ factGenerada.nombre_cliente }}</p>
-                        <p style="margin:2px 0;"><strong>NIT:</strong> {{ factGenerada.nit_cliente }}</p>
-                    </div>
-
-                    <div style="border-bottom:1px dashed #000;padding-bottom:10px;margin-bottom:10px;">
-                        <div v-for="det in pedidoActivo?.detalles" :key="det.id_detalle" style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
-                            <span>{{ det.cantidad }}x {{ det.producto?.nombre_prod }}</span>
-                            <span>${{ (det.cantidad * parseFloat(det.precio_unitario)).toFixed(2) }}</span>
+                
+                <div v-else class="factura-view">
+                    <div id="ticket-print" class="ticket">
+                        <h1 class="ticket-brand">HA LA FRIDA</h1>
+                        <p>Ticket No: {{ factGenerada.numero_factura }}</p>
+                        <p>Fecha: {{ new Date().toLocaleString() }}</p>
+                        <hr>
+                        <div v-for="d in pedidoActivo.detalles" :key="d.id_detalle" class="ticket-row">
+                            <span>{{ d.cantidad }}x {{ d.producto.nombre_prod }}</span>
+                            <span>$ {{ (d.cantidad * d.precio_unitario).toFixed(2) }}</span>
                         </div>
+                        <hr>
+                        <div class="ticket-total">
+                            <span>TOTAL:</span>
+                            <span>$ {{ factGenerada.total }}</span>
+                        </div>
+                        <p class="ticket-footer">¡Gracias por su visita!</p>
                     </div>
-
-                    <div style="text-align:right;font-size:18px;font-weight:bold;margin-bottom:30px;">
-                        TOTAL: ${{ parseFloat(factGenerada.total).toFixed(2) }}
+                    <div class="modal-btns no-print">
+                        <button @click="printTicket" class="btn-print">🖨️ Imprimir Ticket</button>
+                        <button @click="finalizarTodo" class="btn-prim">Finalizar y Salir</button>
                     </div>
-
-                    <button @click="finalizarTodo" style="width:100%;padding:15px;background:#000;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;font-family:sans-serif;">TERMINAR</button>
                 </div>
             </div>
-        </Teleport>
-
+        </div>
     </div>
 </template>
 
 <style>
-@keyframes pulse {
-    0% { transform: scale(0.95); opacity: 0.8; }
-    50% { transform: scale(1.05); opacity: 1; }
-    100% { transform: scale(0.95); opacity: 0.8; }
+/* CSS Moderno, Premium y Responsivo */
+:root {
+    --primary: #10b981;
+    --secondary: #6366f1;
+    --dark: #0f172a;
+    --light: #f8fafc;
+    --danger: #ef4444;
+    --warning: #f59e0b;
 }
-@keyframes slideIn {
-    from { transform: translateX(30px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+
+body { margin: 0; font-family: 'Inter', sans-serif; background: #f1f5f9; color: var(--dark); overflow: hidden; }
+
+.app-container { display: flex; height: 100vh; overflow: hidden; }
+
+/* Sidebar */
+.sidebar { width: 320px; background: #fff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; z-index: 10; }
+.sidebar-header { padding: 20px; border-bottom: 1px solid #f1f5f9; }
+.kitchen-badge { font-size: 11px; padding: 4px 10px; border-radius: 20px; font-weight: 800; display: inline-block; }
+.kitchen-badge.Bajo { background: #dcfce7; color: #16a34a; }
+.kitchen-badge.Medio { background: #fef3c7; color: #d97706; }
+.kitchen-badge.Alto { background: #fee2e2; color: #dc2626; }
+
+.notif-list { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+.notif-item { padding: 12px; border-radius: 12px; background: #f8fafc; border-left: 4px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center; }
+.notif-item.Recibido { border-color: #94a3b8; }
+.notif-item.En.Preparación { border-color: var(--warning); background: #fffbeb; }
+.notif-item.Listo { border-color: var(--primary); background: #f0fdf4; animation: pulse 2s infinite; }
+.status-pill { font-size: 10px; font-weight: 800; text-transform: uppercase; color: #64748b; }
+.btn-check { background: var(--primary); color: #fff; border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+
+/* Main Content */
+.main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; background: #f8fafc; }
+.top-bar { padding: 20px 40px; background: #fff; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
+.user-info { display: flex; gap: 15px; align-items: center; }
+.avatar { font-size: 32px; background: #f1f5f9; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+
+.mesas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 20px; padding: 40px; }
+.mesa-card { background: #fff; padding: 25px; border-radius: 20px; text-align: center; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+.mesa-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+.mesa-card.Libre { border-color: #10b98133; }
+.mesa-card.Ocupada { background: var(--dark); color: #fff; }
+.mesa-number { font-size: 28px; font-weight: 800; }
+.mesa-status { font-size: 12px; opacity: 0.7; font-weight: 600; margin: 5px 0; }
+
+/* Order Layout */
+.order-layout { display: flex; gap: 20px; padding: 20px; height: calc(100vh - 160px); }
+.menu-section { flex: 2; display: flex; flex-direction: column; gap: 15px; }
+.cat-bar { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; }
+.cat-bar button { padding: 10px 20px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; cursor: pointer; white-space: nowrap; font-weight: 600; }
+.cat-bar button.active { background: var(--dark); color: #fff; border-color: var(--dark); }
+
+.menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; overflow-y: auto; }
+.product-card { background: #fff; border-radius: 18px; overflow: hidden; cursor: pointer; transition: 0.2s; border: 1px solid #e2e8f0; }
+.product-card:hover { border-color: var(--primary); }
+.prod-img { height: 120px; background-size: cover; background-position: center; }
+.prod-info { padding: 12px; text-align: center; }
+.prod-info h4 { margin: 0; font-size: 14px; }
+.price { color: var(--primary); font-weight: 800; font-size: 16px; }
+
+.order-summary { flex: 1; background: #fff; border-radius: 20px; display: flex; flex-direction: column; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+.order-items { flex: 1; overflow-y: auto; padding: 20px; }
+.order-item { padding-bottom: 15px; border-bottom: 1px solid #f1f5f9; margin-bottom: 15px; }
+.item-main { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.note-input { width: 100%; border: 1px solid #e2e8f0; padding: 8px; border-radius: 8px; font-size: 12px; }
+
+.order-footer { padding: 20px; border-top: 2px dashed #f1f5f9; }
+.total-row { display: flex; justify-content: space-between; font-size: 20px; margin-bottom: 15px; }
+.btn-send { width: 100%; background: var(--primary); color: #fff; border: none; padding: 16px; border-radius: 15px; font-size: 16px; font-weight: 800; cursor: pointer; }
+
+/* Modales */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal-content { background: #fff; border-radius: 30px; padding: 40px; width: 90%; max-width: 450px; }
+.total-big { font-size: 32px; color: var(--primary); }
+.modern-select { width: 100%; padding: 14px; border-radius: 12px; border: 2px solid #e2e8f0; font-size: 16px; }
+
+/* Ticket Print */
+.ticket { padding: 20px; font-family: monospace; }
+.ticket-brand { text-align: center; margin-bottom: 10px; font-size: 24px; }
+.ticket-row { display: flex; justify-content: space-between; font-size: 14px; margin: 4px 0; }
+.ticket-total { display: flex; justify-content: space-between; font-weight: 800; font-size: 18px; margin-top: 10px; }
+.ticket-footer { text-align: center; margin-top: 20px; font-size: 12px; }
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .sidebar { display: none; }
+    .order-layout { flex-direction: column; overflow-y: auto; height: auto; }
 }
-.slide-enter-active, .slide-leave-active { transition: all 0.4s ease; }
-.slide-enter-from, .slide-leave-to { transform: translateX(100px); opacity: 0; }
+
+@media (max-width: 600px) {
+    .top-bar { padding: 15px 20px; flex-direction: column; gap: 10px; text-align: center; }
+    .mesas-grid { padding: 20px; gap: 15px; }
+}
+
+.toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 15px 30px; border-radius: 15px; color: #fff; font-weight: 700; z-index: 2000; animation: slideUp 0.3s; }
+.toast.ok { background: var(--primary); }
+.toast.err { background: var(--danger); }
+
+@keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); background: #dcfce7; } 100% { transform: scale(1); } }
+@keyframes slideUp { from { transform: translate(-50%, 50px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+
+@media print {
+    .no-print { display: none; }
+    body * { visibility: hidden; }
+    #ticket-print, #ticket-print * { visibility: visible; }
+    #ticket-print { position: absolute; left: 0; top: 0; width: 100%; }
+}
 </style>

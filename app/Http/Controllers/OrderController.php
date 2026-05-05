@@ -81,6 +81,7 @@ class OrderController extends Controller
                 'id_mesa' => $validated['id_mesa'],
                 'id_usuario' => $idUsuario,
                 'estado_pedido' => 'Recibido',
+                'fecha_hora' => now(),
             ]);
 
             // 4. Marcar mesa como ocupada
@@ -170,5 +171,36 @@ class OrderController extends Controller
             DB::rollBack();
             return response()->json(['error' => 'Error al procesar el pago', 'details' => $e->getMessage()], 500);
         }
+    }
+
+    public function getKitchenLoad()
+    {
+        $enPreparacion = DetallePedido::where('estado_cocina', 'En Preparación')->count();
+        $recibidos = DetallePedido::where('estado_cocina', 'Recibido')->count();
+        
+        $nivel = 'Bajo';
+        if (($enPreparacion + $recibidos) > 10) $nivel = 'Medio';
+        if (($enPreparacion + $recibidos) > 20) $nivel = 'Alto';
+
+        return response()->json([
+            'total_items' => $enPreparacion + $recibidos,
+            'nivel' => $nivel,
+            'tiempo_estimado' => ($enPreparacion + $recibidos) * 5 // 5 min por item aprox
+        ]);
+    }
+
+    public function getNotifications()
+    {
+        // Traer estados de platos listos o en preparación de las mesas ocupadas
+        $notificaciones = DB::table('Detalle_Pedido as dp')
+            ->join('Pedido as p', 'dp.id_pedido', '=', 'p.id_pedido')
+            ->join('Producto as prod', 'dp.id_producto', '=', 'prod.id_producto')
+            ->join('Mesa as m', 'p.id_mesa', '=', 'm.id_mesa')
+            ->whereIn('p.estado_pedido', ['Recibido', 'En Preparación'])
+            ->select('m.id_mesa', 'prod.nombre_prod', 'dp.estado_cocina', 'dp.id_detalle', 'dp.updated_at')
+            ->orderBy('dp.updated_at', 'desc')
+            ->get();
+
+        return response()->json($notificaciones);
     }
 }

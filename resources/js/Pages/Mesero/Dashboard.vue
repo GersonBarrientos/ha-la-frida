@@ -33,7 +33,7 @@ let alarmInterval = null;
 
 const playBell = () => {
     try {
-        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        const audio = new Audio('/sounds/notification.mp3');
         audio.play();
     } catch (e) {}
 };
@@ -125,7 +125,7 @@ onMounted(() => {
         Object.keys(alarmasActivas.value).forEach(id => {
             if ((now - alarmasActivas.value[id]) > 120000) { // 2 min
                 toast(`🚨 Mesa con plato listo hace +2 min`, 'err');
-                try { new Audio('https://assets.mixkit.co/active_storage/sfx/951/951-preview.mp3').play(); } catch(e){}
+                try { new Audio('/sounds/alarm.mp3').play(); } catch(e){}
             }
         });
     }, 20000);

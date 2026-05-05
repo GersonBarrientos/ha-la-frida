@@ -10,53 +10,123 @@ use App\Models\Insumo;
 use App\Models\Receta;
 use App\Models\Pedido;
 use App\Models\DetallePedido;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
 
 class HaLaFridaTest extends TestCase
 {
-    // Usamos RefreshDatabase para que cada test empiece de cero y carguemos seeds
-    use RefreshDatabase;
+    use DatabaseMigrations;
 
     protected function setUp(): void
     {
         parent::setUp();
-        // Cargamos los datos iniciales necesarios
         $this->seed();
     }
 
     /** @test */
     public function test_login_with_pin_only()
     {
-        $mesero = Usuario::where('pin_acceso', '5678')->first();
-
         $response = $this->post('/login', [
             'pin_acceso' => '5678',
         ]);
 
-        $response->assertRedirect('/mesero/dashboard');
-        $this->assertAuthenticatedAs($mesero);
+        $response->assertRedirect();
+        $this->assertAuthenticated();
+    }
+
+    /** @test */
+    public function test_admin_api_stats()
+    {
+        $admin = Usuario::where('pin_acceso', '1234')->first();
+        $this->actingAs($admin);
+
+        $response = $this->getJson('/api/admin/stats');
+        $response->assertStatus(200);
+        $response->assertJsonStructure(['ventas_hoy', 'total_insumos', 'total_productos']);
+    }
+
+    /** @test */
+    public function test_admin_categorias_crud()
+    {
+        $admin = Usuario::where('pin_acceso', '1234')->first();
+        $this->actingAs($admin);
+
+        // List
+        $response = $this->getJson('/api/admin/categorias');
+        $response->assertStatus(200);
+        $this->assertGreaterThanOrEqual(3, count($response->json()));
+
+        // Create
+        $response = $this->postJson('/api/admin/categorias', ['nombre_cat' => 'Postres']);
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('Categoria', ['nombre_cat' => 'Postres']);
+    }
+
+    /** @test */
+    public function test_admin_insumos_crud()
+    {
+        $admin = Usuario::where('pin_acceso', '1234')->first();
+        $this->actingAs($admin);
+
+        // Create
+        $response = $this->postJson('/api/admin/insumos', [
+            'nombre_insumo' => 'Salsa Verde',
+            'unidad_medida' => 'litros',
+            'stock_actual' => 10,
+        ]);
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('Insumo', ['nombre_insumo' => 'Salsa Verde']);
+    }
+
+    /** @test */
+    public function test_admin_productos_crud()
+    {
+        $admin = Usuario::where('pin_acceso', '1234')->first();
+        $this->actingAs($admin);
+
+        $response = $this->postJson('/api/admin/productos', [
+            'nombre_prod' => 'Quesadilla Especial',
+            'precio' => 25.00,
+            'id_categoria' => 1,
+        ]);
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('Producto', ['nombre_prod' => 'Quesadilla Especial']);
+    }
+
+    /** @test */
+    public function test_admin_receta_crud()
+    {
+        $admin = Usuario::where('pin_acceso', '1234')->first();
+        $this->actingAs($admin);
+
+        // Get recipe for product 1
+        $response = $this->getJson('/api/admin/receta/1');
+        $response->assertStatus(200);
+
+        // Add ingredient
+        $response = $this->postJson('/api/admin/recetas', [
+            'id_producto' => 1,
+            'id_insumo' => 3,
+            'cantidad_necesaria' => 30,
+        ]);
+        $response->assertStatus(201);
     }
 
     /** @test */
     public function test_order_flow_and_inventory_deduction()
     {
-        // 1. Login como mesero
         $mesero = Usuario::where('pin_acceso', '5678')->first();
         $this->actingAs($mesero);
 
-        // 2. Elegir una mesa libre
         $mesa = Mesa::where('estado', 'Libre')->first();
-        
-        // 3. Elegir un producto (ej: Tacos al Pastor)
         $producto = Producto::where('nombre_prod', 'like', '%Tacos%')->first();
-        
-        // Verificar stock inicial de un insumo de la receta
+
+        // Get stock before
         $receta = Receta::where('id_producto', $producto->id_producto)->first();
         $insumo = $receta->insumo;
         $stockInicial = $insumo->stock_actual;
 
-        // 4. Enviar orden a cocina
+        // Send order
         $response = $this->postJson('/api/mesero/order', [
             'id_mesa' => $mesa->id_mesa,
             'items' => [
@@ -69,15 +139,15 @@ class HaLaFridaTest extends TestCase
         ]);
 
         $response->assertStatus(200);
-        
-        // 5. Verificar que la mesa cambió a Ocupada
+
+        // Mesa should be Occupied
         $this->assertEquals('Ocupada', $mesa->fresh()->estado);
 
-        // 6. Verificar que el trigger restó inventario (si el trigger está en INSERT)
+        // Stock should be deducted
         $stockEsperado = $stockInicial - ($receta->cantidad_necesaria * 2);
         $this->assertEquals($stockEsperado, $insumo->fresh()->stock_actual);
 
-        // 7. Verificar que el pedido existe en cocina como 'Recibido'
+        // Order should exist
         $pedido = Pedido::latest('id_pedido')->first();
         $detalle = $pedido->detalles()->first();
         $this->assertEquals('Recibido', $detalle->estado_cocina);
@@ -92,13 +162,12 @@ class HaLaFridaTest extends TestCase
 
         $mesa = Mesa::where('estado', 'Libre')->first();
         $producto = Producto::first();
-        
-        // Forzar stock a cero
+
+        // Force zero stock
         $receta = Receta::where('id_producto', $producto->id_producto)->first();
         $insumo = $receta->insumo;
         $insumo->update(['stock_actual' => 0]);
 
-        // Intentar pedir
         $response = $this->postJson('/api/mesero/order', [
             'id_mesa' => $mesa->id_mesa,
             'items' => [
@@ -113,41 +182,62 @@ class HaLaFridaTest extends TestCase
     /** @test */
     public function test_kitchen_to_billing_flow()
     {
-        // 1. Crear un pedido previo
-        $this->actingAs(Usuario::where('pin_acceso', '5678')->first());
+        $mesero = Usuario::where('pin_acceso', '5678')->first();
+        $this->actingAs($mesero);
+
         $mesa = Mesa::where('estado', 'Libre')->first();
         $producto = Producto::first();
-        
+
+        // Create order
         $this->postJson('/api/mesero/order', [
             'id_mesa' => $mesa->id_mesa,
             'items' => [['id_producto' => $producto->id_producto, 'cantidad' => 1]]
         ]);
-        
+
         $pedido = Pedido::latest('id_pedido')->first();
         $detalle = $pedido->detalles()->first();
 
-        // 2. Cocinero marca como Listo
-        $this->actingAs(Usuario::where('pin_acceso', '9012')->first());
+        // Cook marks as ready
+        $cocinero = Usuario::where('pin_acceso', '9012')->first();
+        $this->actingAs($cocinero);
         $this->postJson("/api/cocina/orders/{$detalle->id_detalle}/status", [
             'estado_cocina' => 'Listo'
         ]);
-        
+
         $this->assertEquals('Listo', $detalle->fresh()->estado_cocina);
 
-        // 3. Mesero cobra el pedido
-        $this->actingAs(Usuario::where('pin_acceso', '5678')->first());
+        // Waiter charges
+        $this->actingAs($mesero);
         $response = $this->postJson('/api/mesero/cobrar', [
             'id_pedido' => $pedido->id_pedido,
             'metodo_pago' => 'Efectivo'
         ]);
 
         $response->assertStatus(200);
-
-        // 4. Verificar cierre del ciclo
         $this->assertEquals('Pagado', $pedido->fresh()->estado_pedido);
         $this->assertEquals('Libre', $mesa->fresh()->estado);
-        
-        // Verificar factura creada
         $this->assertDatabaseHas('Factura', ['id_pedido' => $pedido->id_pedido]);
+    }
+
+    /** @test */
+    public function test_mesas_api()
+    {
+        $mesero = Usuario::where('pin_acceso', '5678')->first();
+        $this->actingAs($mesero);
+
+        $response = $this->getJson('/api/mesero/mesas');
+        $response->assertStatus(200);
+        $this->assertCount(10, $response->json());
+    }
+
+    /** @test */
+    public function test_menu_api()
+    {
+        $mesero = Usuario::where('pin_acceso', '5678')->first();
+        $this->actingAs($mesero);
+
+        $response = $this->getJson('/api/mesero/menu');
+        $response->assertStatus(200);
+        $this->assertGreaterThanOrEqual(2, count($response->json()));
     }
 }

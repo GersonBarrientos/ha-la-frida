@@ -37,12 +37,22 @@ class AdminController extends Controller
             ->get();
 
         // BI: Tráfico por Hora (hoy)
-        $traficoHora = DB::table('Pedido')
-            ->whereDate('fecha_hora', now()->toDateString())
-            ->selectRaw('EXTRACT(HOUR FROM fecha_hora)::int as hora, COUNT(*) as pedidos')
-            ->groupByRaw('EXTRACT(HOUR FROM fecha_hora)')
-            ->orderBy('hora')
-            ->get();
+        $driver = DB::getDriverName();
+        if ($driver === 'sqlite') {
+            $traficoHora = DB::table('Pedido')
+                ->whereDate('fecha_hora', now()->toDateString())
+                ->selectRaw('CAST(strftime("%H", fecha_hora) AS INTEGER) as hora, COUNT(*) as pedidos')
+                ->groupByRaw('strftime("%H", fecha_hora)')
+                ->orderBy('hora')
+                ->get();
+        } else {
+            $traficoHora = DB::table('Pedido')
+                ->whereDate('fecha_hora', now()->toDateString())
+                ->selectRaw('EXTRACT(HOUR FROM fecha_hora)::int as hora, COUNT(*) as pedidos')
+                ->groupByRaw('EXTRACT(HOUR FROM fecha_hora)')
+                ->orderBy('hora')
+                ->get();
+        }
 
         $totalInsumos = Insumo::count();
         $totalProductos = Producto::where('estado', 'Activo')->count();

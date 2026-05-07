@@ -16,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
+        $middleware->alias([
+            'check-role' => \App\Http\Middleware\CheckRole::class,
+        ]);
+
         $middleware->redirectTo(
             guests: '/login',
             users: '/dashboard'

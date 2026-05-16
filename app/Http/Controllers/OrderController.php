@@ -165,7 +165,8 @@ class OrderController extends Controller
 
             return response()->json([
                 'message' => 'Pago procesado y mesa liberada correctamente',
-                'factura' => $factura
+                'factura' => $factura,
+                'pdf_url' => url('/api/mesero/factura/' . $factura->id_factura)
             ]);
         } catch (\Exception $e) {
             DB::rollBack();

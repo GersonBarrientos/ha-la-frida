@@ -66,6 +66,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/api/admin/history', [\App\Http\Controllers\ReportsController::class, 'getSalesHistory']);
         Route::get('/api/admin/export-daily', [\App\Http\Controllers\ReportsController::class, 'exportDailyCSV']);
         Route::get('/api/admin/profit', [\App\Http\Controllers\AdminController::class, 'getProfitReport']);
+        Route::get('/api/admin/factura/{id_factura}', [\App\Http\Controllers\ReportsController::class, 'downloadFactura']);
     });
 
     // API Rutas Mesero (Solo Rol 2: Mesero)
@@ -74,6 +75,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/api/mesero/menu', [\App\Http\Controllers\OrderController::class, 'getMenu']);
         Route::post('/api/mesero/order', [\App\Http\Controllers\OrderController::class, 'submitOrder']);
         Route::post('/api/mesero/cobrar', [\App\Http\Controllers\OrderController::class, 'cobrarPedido']);
+        Route::get('/api/mesero/factura/{id_factura}', [\App\Http\Controllers\ReportsController::class, 'downloadFactura']);
         Route::get('/api/mesero/get-kitchen-load', [\App\Http\Controllers\OrderController::class, 'getKitchenLoad']);
         Route::get('/api/mesero/get-notifications', [\App\Http\Controllers\OrderController::class, 'getNotifications']);
         Route::get('/api/mesero/pedido-activo/{id_mesa}', [\App\Http\Controllers\OrderController::class, 'getPedidoActivo']);

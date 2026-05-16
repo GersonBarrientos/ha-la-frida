@@ -189,6 +189,7 @@ const enviarOrden = async () => {
 };
 
 const factGenerada = ref(null);
+const pdfUrl = ref(null);
 const procesarCobro = async () => {
     cobrandoLoad.value = true;
     try {
@@ -197,6 +198,7 @@ const procesarCobro = async () => {
             metodo_pago: metodoPago.value
         });
         factGenerada.value = res.data.factura;
+        pdfUrl.value = res.data.pdf_url;
         toast('✅ Pago procesado');
     } catch (e) { toast('❌ Error al cobrar', 'err'); }
     finally { cobrandoLoad.value = false; }
@@ -467,7 +469,10 @@ const cerrarTurno = () => router.post('/logout');
                         TOTAL: ${{ parseFloat(factGenerada.total).toFixed(2) }}
                     </div>
 
-                    <button @click="finalizarTodo" style="width:100%;padding:15px;background:#000;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;font-family:sans-serif;">TERMINAR</button>
+                    <div style="display:flex;gap:10px;">
+                        <a :href="pdfUrl" target="_blank" style="flex:1;text-align:center;padding:15px;background:#2563eb;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;font-family:sans-serif;text-decoration:none;">📄 DESCARGAR PDF</a>
+                        <button @click="finalizarTodo" style="flex:1;padding:15px;background:#000;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;font-family:sans-serif;">TERMINAR</button>
+                    </div>
                 </div>
             </div>
         </Teleport>

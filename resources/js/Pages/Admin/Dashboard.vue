@@ -544,6 +544,40 @@ const eliminarIngrediente = async (id) => {
                 </div>
             </div>
 
+            <!-- HISTORY -->
+            <div v-if="tab==='history'">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                    <h2 style="font-size:18px;font-weight:800;">Historial de Ventas</h2>
+                </div>
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;">
+                        <thead>
+                            <tr style="background:#f9fafb;border-bottom:1px solid #e5e7eb;">
+                                <th style="padding:14px 20px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;">Factura N°</th>
+                                <th style="padding:14px 20px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;">Fecha</th>
+                                <th style="padding:14px 20px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;">Mesero</th>
+                                <th style="padding:14px 20px;text-align:left;font-size:11px;color:#6b7280;text-transform:uppercase;">Método</th>
+                                <th style="padding:14px 20px;text-align:right;font-size:11px;color:#6b7280;text-transform:uppercase;">Total</th>
+                                <th style="padding:14px 20px;text-align:center;font-size:11px;color:#6b7280;text-transform:uppercase;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="h in history" :key="h.id_factura" style="border-bottom:1px solid #f3f4f6;">
+                                <td style="padding:14px 20px;font-weight:700;">{{ h.numero_factura }}</td>
+                                <td style="padding:14px 20px;font-size:13px;color:#4b5563;">{{ h.fecha_pago }}</td>
+                                <td style="padding:14px 20px;font-size:13px;color:#4b5563;">{{ h.pedido?.usuario?.nombre_completo || 'N/A' }}</td>
+                                <td style="padding:14px 20px;font-size:13px;color:#4b5563;">{{ h.metodo_pago }}</td>
+                                <td style="padding:14px 20px;text-align:right;font-weight:800;color:#16a34a;">${{ parseFloat(h.total).toFixed(2) }}</td>
+                                <td style="padding:14px 20px;text-align:center;">
+                                    <a :href="`/api/admin/factura/${h.id_factura}`" target="_blank" style="display:inline-block;background:#eff6ff;color:#2563eb;text-decoration:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;">📄 Descargar PDF</a>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p v-if="!history.length" style="text-align:center;color:#9ca3af;padding:40px;font-size:14px;">No hay ventas registradas.</p>
+                </div>
+            </div>
+
             <!-- PROFIT -->
             <div v-if="tab==='profit'">
                 <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;">Análisis de Rentabilidad Histórica</h2>

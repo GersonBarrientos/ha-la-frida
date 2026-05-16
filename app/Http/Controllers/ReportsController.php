@@ -6,7 +6,7 @@ use App\Models\Pedido;
 use App\Models\Factura;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-
+use Barryvdh\DomPDF\Facade\Pdf;
 class ReportsController extends Controller
 {
     public function getSalesHistory(Request $request)
@@ -52,5 +52,16 @@ class ReportsController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    public function downloadFactura($id_factura)
+    {
+        $factura = Factura::with(['pedido.usuario', 'pedido.mesa', 'pedido.detalles.producto'])
+            ->where('id_factura', $id_factura)
+            ->firstOrFail();
+
+        $pdf = Pdf::loadView('pdf.factura', compact('factura'));
+        
+        return $pdf->download('factura_' . $factura->numero_factura . '.pdf');
     }
 }

@@ -21,7 +21,7 @@ class AdminController extends Controller
             ->first();
 
         // Inventario Crítico
-        $inventarioCritico = Insumo::where('stock_actual', '<=', 10)
+        $inventarioCritico = Insumo::whereColumn('stock_actual', '<=', 'nivel_alerta')
             ->where('estado', 'Activo')
             ->get();
 
@@ -83,6 +83,17 @@ class AdminController extends Controller
         return response()->json(['message' => 'Categoría creada', 'categoria' => $categoria], 201);
     }
 
+    public function updateCategoria(Request $request, $id_categoria)
+    {
+        $validated = $request->validate([
+            'nombre_cat' => 'required|string|max:100|unique:Categoria,nombre_cat,' . $id_categoria . ',id_categoria',
+        ]);
+
+        $categoria = Categoria::findOrFail($id_categoria);
+        $categoria->update($validated);
+        return response()->json(['message' => 'Categoría actualizada', 'categoria' => $categoria]);
+    }
+
     public function deleteCategoria($id_categoria)
     {
         $cat = Categoria::findOrFail($id_categoria);
@@ -105,6 +116,7 @@ class AdminController extends Controller
             'nombre_insumo' => 'required|string|max:100',
             'unidad_medida' => 'required|string|max:100',
             'stock_actual'  => 'required|numeric|min:0',
+            'nivel_alerta'  => 'nullable|numeric|min:0',
         ]);
 
         $insumo = Insumo::create($validated);
@@ -117,6 +129,7 @@ class AdminController extends Controller
             'nombre_insumo' => 'required|string|max:100',
             'unidad_medida' => 'required|string|max:100',
             'stock_actual'  => 'required|numeric|min:0',
+            'nivel_alerta'  => 'nullable|numeric|min:0',
             'estado'        => 'required|in:Activo,Inactivo'
         ]);
 
@@ -186,10 +199,21 @@ class AdminController extends Controller
     public function deleteProducto($id_producto)
     {
         $producto = Producto::findOrFail($id_producto);
-        // Soft delete o cambio de estado para no romper historial de pedidos
-        $producto->estado = 'Inactivo';
-        $producto->save();
-        return response()->json(['message' => 'Producto marcado como Inactivo']);
+        
+        // Verificar si tiene detalles de pedido asociados
+        $tienePedidos = DB::table('Detalle_Pedido')->where('id_producto', $id_producto)->exists();
+        
+        if ($tienePedidos) {
+            // Si ya fue pedido, solo lo ocultamos para no romper el historial
+            $producto->estado = 'Inactivo';
+            $producto->save();
+            return response()->json(['message' => 'El producto tiene pedidos en el historial, fue marcado como Inactivo.']);
+        } else {
+            // Si nunca se ha pedido, borrar recetas y el producto completamente
+            Receta::where('id_producto', $id_producto)->delete();
+            $producto->delete();
+            return response()->json(['message' => 'Producto eliminado completamente.']);
+        }
     }
 
     // === GESTIÓN DE RECETAS ===

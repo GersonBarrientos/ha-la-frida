@@ -44,6 +44,7 @@ Route::middleware(['auth'])->group(function () {
 
         Route::get('/api/admin/categorias', [\App\Http\Controllers\AdminController::class, 'getCategorias']);
         Route::post('/api/admin/categorias', [\App\Http\Controllers\AdminController::class, 'storeCategoria']);
+        Route::put('/api/admin/categorias/{id_categoria}', [\App\Http\Controllers\AdminController::class, 'updateCategoria']);
         Route::delete('/api/admin/categorias/{id_categoria}', [\App\Http\Controllers\AdminController::class, 'deleteCategoria']);
 
         Route::get('/api/admin/insumos', [\App\Http\Controllers\AdminController::class, 'getInsumos']);

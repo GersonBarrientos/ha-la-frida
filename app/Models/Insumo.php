@@ -14,6 +14,7 @@ class Insumo extends Model
         'nombre_insumo',
         'unidad_medida',
         'stock_actual',
+        'nivel_alerta',
         'fecha_vencimiento',
         'estado'
     ];

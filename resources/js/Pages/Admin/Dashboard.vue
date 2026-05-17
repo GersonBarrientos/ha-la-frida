@@ -11,7 +11,7 @@ const showNotif = (msg, tipo = 'ok') => { notif.value = { msg, tipo }; setTimeou
 const stats = ref({ ventas_hoy: { Cantidad_Facturas: 0, Ingresos_Totales: 0 }, inventario_critico: [], total_insumos: 0, total_productos: 0 });
 
 const insumos = ref([]);
-const fInsumo = ref({ nombre_insumo: '', unidad_medida: 'gramos', stock_actual: 0, estado: 'Activo' });
+const fInsumo = ref({ nombre_insumo: '', unidad_medida: 'gramos', stock_actual: 0, nivel_alerta: 10, estado: 'Activo' });
 const modalInsumo = ref(false);
 const editInsumoId = ref(null);
 
@@ -19,6 +19,7 @@ const usuarios = ref([]);
 const fUsuario = ref({ nombre_completo: '', correo: '', pin_acceso: '', id_rol: '' });
 const fCategoria = ref({ nombre_cat: '' });
 const modalCategoria = ref(false);
+const editCategoriaId = ref(null);
 const modalUsuario = ref(false);
 
 
@@ -44,7 +45,7 @@ const recetaActual = ref([]);
 const fReceta = ref({ id_insumo: '', cantidad_necesaria: '' });
 const editRecetaId = ref(null);
 
-const criticos = computed(() => insumos.value.filter(i => parseFloat(i.stock_actual) <= 10));
+const criticos = computed(() => insumos.value.filter(i => parseFloat(i.stock_actual) <= parseFloat(i.nivel_alerta || 10)));
 
 const refreshAll = async () => {
     try {
@@ -69,12 +70,24 @@ const refreshAll = async () => {
 
 const guardarCategoria = async () => {
     try {
-        await axios.post('/api/admin/categorias', fCategoria.value);
-        showNotif('Categoría creada ✓');
+        if (editCategoriaId.value) {
+            await axios.put(`/api/admin/categorias/${editCategoriaId.value}`, fCategoria.value);
+            showNotif('Categoría actualizada ✓');
+        } else {
+            await axios.post('/api/admin/categorias', fCategoria.value);
+            showNotif('Categoría creada ✓');
+        }
         modalCategoria.value = false;
         fCategoria.value = { nombre_cat: '' };
+        editCategoriaId.value = null;
         await refreshAll();
     } catch (e) { showNotif(e.response?.data?.message || 'Error', 'err'); }
+};
+
+const prepararEditCategoria = (cat) => {
+    editCategoriaId.value = cat.id_categoria;
+    fCategoria.value = { nombre_cat: cat.nombre_cat };
+    modalCategoria.value = true;
 };
 
 const eliminarCategoria = async (id) => {
@@ -164,10 +177,12 @@ const prepararEditProducto = (prod) => {
 };
 
 const eliminarProducto = async (id) => {
-    if (!confirm('¿Deseas dar de baja este platillo? (Pasará a Inactivo)')) return;
-    await axios.delete(`/api/admin/productos/${id}`);
-    showNotif('Platillo desactivado');
-    await refreshAll();
+    if (!confirm('¿Deseas ELIMINAR permanentemente este platillo? Si tiene pedidos, solo se ocultará.')) return;
+    try {
+        const res = await axios.delete(`/api/admin/productos/${id}`);
+        showNotif(res.data.message);
+        await refreshAll();
+    } catch (e) { showNotif('Error', 'err'); }
 };
 
 const abrirReceta = async (prod) => {
@@ -227,6 +242,11 @@ const eliminarIngrediente = async (id) => {
                             <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Stock</label>
                             <input type="number" step="0.01" v-model="fInsumo.stock_actual" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box;" />
                         </div>
+                    </div>
+                    <div style="margin-bottom:14px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Nivel de Alerta Crítico (Mínimo)</label>
+                        <input type="number" step="0.01" v-model="fInsumo.nivel_alerta" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box;" />
+                        <p style="font-size:10px;color:#9ca3af;margin:4px 0 0 0;">Si el stock baja de este número, se mostrará alerta.</p>
                     </div>
 
                     <div v-if="editInsumoId" style="margin-bottom:20px;">
@@ -393,7 +413,7 @@ const eliminarIngrediente = async (id) => {
             <div v-if="tab==='inventario'">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
                     <h2 style="font-size:18px;font-weight:800;">Gestión de Insumos</h2>
-                    <button @click="editInsumoId=null; fInsumo={nombre_insumo:'',unidad_medida:'gramos',stock_actual:0,estado:'Activo'}; modalInsumo=true;" style="background:#16a34a;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;">+ Nuevo Insumo</button>
+                    <button @click="editInsumoId=null; fInsumo={nombre_insumo:'',unidad_medida:'gramos',stock_actual:0,nivel_alerta:10,estado:'Activo'}; modalInsumo=true;" style="background:#16a34a;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;">+ Nuevo Insumo</button>
                 </div>
                 
                 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;overflow-x:auto;">
@@ -509,7 +529,7 @@ const eliminarIngrediente = async (id) => {
             <div v-if="tab==='categorias'">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
                     <h2 style="font-size:18px;font-weight:800;">Gestión de Categorías</h2>
-                    <button @click="modalCategoria=true" style="background:#7c3aed;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;">+ Nueva Categoría</button>
+                    <button @click="editCategoriaId=null; fCategoria={nombre_cat:''}; modalCategoria=true;" style="background:#7c3aed;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;">+ Nueva Categoría</button>
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));gap:16px;">
                     <div v-for="cat in categorias" :key="cat.id_categoria" style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:20px;display:flex;align-items:center;justify-content:space-between;">
@@ -520,7 +540,10 @@ const eliminarIngrediente = async (id) => {
                                 <p style="margin:2px 0 0 0;font-size:11px;color:#6b7280;">ID: {{ cat.id_categoria }}</p>
                             </div>
                         </div>
-                        <button @click="eliminarCategoria(cat.id_categoria)" style="background:#fef2f2;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;color:#dc2626;cursor:pointer;">Eliminar</button>
+                        <div style="display:flex;gap:8px;">
+                            <button @click="prepararEditCategoria(cat)" style="background:#f3f4f6;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;color:#374151;cursor:pointer;">Editar</button>
+                            <button @click="eliminarCategoria(cat.id_categoria)" style="background:#fef2f2;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;color:#dc2626;cursor:pointer;">Eliminar</button>
+                        </div>
                     </div>
                 </div>
                 <p v-if="!categorias.length" style="text-align:center;color:#9ca3af;padding:40px;font-size:14px;">No hay categorías registradas.</p>
@@ -650,7 +673,7 @@ const eliminarIngrediente = async (id) => {
     <Teleport to="body">
         <div v-if="modalCategoria" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:2000;backdrop-filter:blur(4px);">
             <div style="background:#fff;width:100%;max-width:400px;border-radius:24px;padding:32px;box-shadow:0 20px 50px rgba(0,0,0,0.2);">
-                <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;">Nueva Categoría</h2>
+                <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;">{{ editCategoriaId ? 'Editar Categoría' : 'Nueva Categoría' }}</h2>
                 <form @submit.prevent="guardarCategoria">
                     <div style="margin-bottom:20px;">
                         <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Nombre de la Categoría</label>

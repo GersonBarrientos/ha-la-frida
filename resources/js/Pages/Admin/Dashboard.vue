@@ -607,19 +607,19 @@ const eliminarIngrediente = async (id) => {
                     <button v-if="auth.user.id_usuario === 1" @click="editUsuarioId=null; fUsuario={nombre_completo:'',correo:'',telefono:'',pin_acceso:'',id_rol:'',estado:'Activo'}; modalUsuario=true" style="background:#2563eb;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;">+ Nuevo Empleado</button>
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:16px;">
-                    <div v-for="u in usuarios" :key="u.id_usuario" style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:20px;display:flex;align-items:center;gap:15px;">
-                        <div style="width:50px;height:50px;background:#f3f4f6;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;">👤</div>
-                        <div style="flex:1;">
-                            <p style="margin:0;font-weight:800;font-size:15px;">{{ u.nombre_completo }} <span v-if="u.id_usuario === 1" style="color:#d97706;font-size:11px;">(SUPER)</span></p>
-                            <p style="margin:0;font-size:12px;color:#6b7280;">{{ u.rol?.descripcion }} · {{ u.telefono || 'Sin tel.' }}</p>
+                    <div v-for="u in usuarios" :key="u.id_usuario" style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:15px;">
+                        <div style="display:flex;align-items:center;gap:15px;">
+                            <div style="width:50px;height:50px;background:#f3f4f6;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;">👤</div>
+                            <div style="flex:1;">
+                                <p style="margin:0;font-weight:800;font-size:15px;">{{ u.nombre_completo }} <span v-if="u.id_usuario === 1" style="color:#d97706;font-size:11px;">(SUPER)</span></p>
+                                <p style="margin:0;font-size:12px;color:#6b7280;">{{ u.rol?.descripcion }} · {{ u.telefono || 'Sin tel.' }}</p>
+                            </div>
+                            <span :style="u.estado==='Activo'?'background:#dcfce7;color:#16a34a;':'background:#fee2e2;color:#dc2626;'" style="font-size:10px;font-weight:800;padding:4px 8px;border-radius:10px;">{{ u.estado }}</span>
                         </div>
-                        <span :style="u.estado==='Activo'?'background:#dcfce7;color:#16a34a;':'background:#fee2e2;color:#dc2626;'" style="font-size:10px;font-weight:800;padding:4px 8px;border-radius:10px;">{{ u.estado }}</span>
-                    </div>
-                    
-                    <div v-if="auth.user.id_usuario === 1" style="padding-top:10px;display:flex;gap:8px;width:100%;">
-                        <button @click="prepararEditUsuario(u)" style="flex:1;background:#f3f4f6;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;color:#374151;cursor:pointer;">Editar</button>
-                        <button v-if="u.id_usuario !== 1" @click="eliminarUsuario(u.id_usuario)" style="flex:1;background:#fef2f2;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;color:#dc2626;cursor:pointer;">Desactivar</button>
-                    </div>
+                        <div v-if="auth.user.id_usuario === 1" style="padding-top:10px;display:flex;gap:8px;width:100%;border-top:1px solid #f3f4f6;">
+                            <button @click="prepararEditUsuario(u)" style="flex:1;background:#f3f4f6;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;color:#374151;cursor:pointer;">Editar</button>
+                            <button v-if="u.id_usuario !== 1" @click="eliminarUsuario(u.id_usuario)" style="flex:1;background:#fef2f2;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;color:#dc2626;cursor:pointer;">Desactivar</button>
+                        </div>
                     </div>
                 </div>
             </div>

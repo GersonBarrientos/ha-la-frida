@@ -117,6 +117,7 @@ class AdminController extends Controller
             'unidad_medida' => 'required|string|max:100',
             'stock_actual'  => 'required|numeric|min:0',
             'nivel_alerta'  => 'nullable|numeric|min:0',
+            'costo_unitario'=> 'nullable|numeric|min:0',
         ]);
 
         $insumo = Insumo::create($validated);
@@ -130,6 +131,7 @@ class AdminController extends Controller
             'unidad_medida' => 'required|string|max:100',
             'stock_actual'  => 'required|numeric|min:0',
             'nivel_alerta'  => 'nullable|numeric|min:0',
+            'costo_unitario'=> 'nullable|numeric|min:0',
             'estado'        => 'required|in:Activo,Inactivo'
         ]);
 
@@ -266,12 +268,46 @@ class AdminController extends Controller
         $validated = $request->validate([
             'nombre_completo' => 'required|string|max:100',
             'correo'          => 'required|email|unique:Usuario,correo',
+            'telefono'        => 'nullable|string|max:20',
             'pin_acceso'      => 'required|string|size:4',
             'id_rol'          => 'required|exists:Rol,id_rol',
         ]);
 
         $user = \App\Models\Usuario::create($validated);
-        return response()->json(['message' => 'Usuario creado', 'usuario' => $user], 201);
+        return response()->json(['message' => 'Usuario creado', 'usuario' => $user->load('rol')], 201);
+    }
+
+    public function updateUsuario(Request $request, $id_usuario)
+    {
+        $validated = $request->validate([
+            'nombre_completo' => 'required|string|max:100',
+            'correo'          => 'required|email|unique:Usuario,correo,' . $id_usuario . ',id_usuario',
+            'telefono'        => 'nullable|string|max:20',
+            'pin_acceso'      => 'required|string|size:4',
+            'id_rol'          => 'required|exists:Rol,id_rol',
+            'estado'          => 'required|in:Activo,Inactivo'
+        ]);
+
+        $user = \App\Models\Usuario::findOrFail($id_usuario);
+        // Evitar que el Super Admin (ID 1) pierda su rol por accidente si es él mismo
+        if ($id_usuario == 1 && $validated['id_rol'] != 1) {
+            return response()->json(['error' => 'No puedes quitar el rol de administrador al Super Admin Principal.'], 422);
+        }
+
+        $user->update($validated);
+        return response()->json(['message' => 'Usuario actualizado', 'usuario' => $user->load('rol')]);
+    }
+
+    public function deleteUsuario($id_usuario)
+    {
+        if ($id_usuario == 1) {
+            return response()->json(['error' => 'El Super Admin Principal no puede ser eliminado.'], 422);
+        }
+
+        $user = \App\Models\Usuario::findOrFail($id_usuario);
+        $user->estado = 'Inactivo';
+        $user->save();
+        return response()->json(['message' => 'Usuario marcado como inactivo']);
     }
 
     // === REPORTES FINANCIEROS (PROFIT) ===
@@ -283,10 +319,19 @@ class AdminController extends Controller
             ->selectRaw('COALESCE(SUM(dp.cantidad * dp.precio_unitario), 0) as ingresos')
             ->value('ingresos') ?? 0;
 
+        // Calcular costo estimado basado en las recetas vendidas
+        $costoVentas = DB::table('Detalle_Pedido as dp')
+            ->join('Pedido as p', 'dp.id_pedido', '=', 'p.id_pedido')
+            ->join('Receta as r', 'dp.id_producto', '=', 'r.id_producto')
+            ->join('Insumo as i', 'r.id_insumo', '=', 'i.id_insumo')
+            ->where('p.estado_pedido', 'Pagado')
+            ->selectRaw('COALESCE(SUM(dp.cantidad * r.cantidad_necesaria * i.costo_unitario), 0) as costos')
+            ->value('costos') ?? 0;
+
         return response()->json([
             'ingresos' => (float)$ventas,
-            'costos'   => 0,
-            'utilidad' => (float)$ventas
+            'costos'   => (float)$costoVentas,
+            'utilidad' => (float)($ventas - $costoVentas)
         ]);
     }
 }

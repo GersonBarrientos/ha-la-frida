@@ -64,6 +64,8 @@ Route::middleware(['auth'])->group(function () {
 
         Route::get('/api/admin/usuarios', [\App\Http\Controllers\AdminController::class, 'getUsuarios']);
         Route::post('/api/admin/usuarios', [\App\Http\Controllers\AdminController::class, 'storeUsuario']);
+        Route::put('/api/admin/usuarios/{id_usuario}', [\App\Http\Controllers\AdminController::class, 'updateUsuario']);
+        Route::delete('/api/admin/usuarios/{id_usuario}', [\App\Http\Controllers\AdminController::class, 'deleteUsuario']);
         Route::get('/api/admin/history', [\App\Http\Controllers\ReportsController::class, 'getSalesHistory']);
         Route::get('/api/admin/export-daily', [\App\Http\Controllers\ReportsController::class, 'exportDailyCSV']);
         Route::get('/api/admin/profit', [\App\Http\Controllers\AdminController::class, 'getProfitReport']);

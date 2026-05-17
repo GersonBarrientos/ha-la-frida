@@ -11,16 +11,17 @@ const showNotif = (msg, tipo = 'ok') => { notif.value = { msg, tipo }; setTimeou
 const stats = ref({ ventas_hoy: { Cantidad_Facturas: 0, Ingresos_Totales: 0 }, inventario_critico: [], total_insumos: 0, total_productos: 0 });
 
 const insumos = ref([]);
-const fInsumo = ref({ nombre_insumo: '', unidad_medida: 'gramos', stock_actual: 0, nivel_alerta: 10, estado: 'Activo' });
+const fInsumo = ref({ nombre_insumo: '', unidad_medida: 'gramos', stock_actual: 0, nivel_alerta: 10, costo_unitario: 0, estado: 'Activo' });
 const modalInsumo = ref(false);
 const editInsumoId = ref(null);
 
 const usuarios = ref([]);
-const fUsuario = ref({ nombre_completo: '', correo: '', pin_acceso: '', id_rol: '' });
+const fUsuario = ref({ nombre_completo: '', correo: '', telefono: '', pin_acceso: '', id_rol: '', estado: 'Activo' });
 const fCategoria = ref({ nombre_cat: '' });
 const modalCategoria = ref(false);
 const editCategoriaId = ref(null);
 const modalUsuario = ref(false);
+const editUsuarioId = ref(null);
 
 
 
@@ -103,11 +104,32 @@ onMounted(refreshAll);
 
 const guardarUsuario = async () => {
     try {
-        await axios.post('/api/admin/usuarios', fUsuario.value);
-        showNotif('Usuario creado ✓');
+        if (editUsuarioId.value) {
+            await axios.put(`/api/admin/usuarios/${editUsuarioId.value}`, fUsuario.value);
+            showNotif('Usuario actualizado ✓');
+        } else {
+            await axios.post('/api/admin/usuarios', fUsuario.value);
+            showNotif('Usuario creado ✓');
+        }
         modalUsuario.value = false;
+        editUsuarioId.value = null;
         await refreshAll();
-    } catch (e) { showNotif(e.response?.data?.message || 'Error', 'err'); }
+    } catch (e) { showNotif(e.response?.data?.message || e.response?.data?.error || 'Error', 'err'); }
+};
+
+const prepararEditUsuario = (u) => {
+    editUsuarioId.value = u.id_usuario;
+    fUsuario.value = { ...u, pin_acceso: '' };
+    modalUsuario.value = true;
+};
+
+const eliminarUsuario = async (id) => {
+    if (!confirm('¿Desactivar este usuario?')) return;
+    try {
+        await axios.delete(`/api/admin/usuarios/${id}`);
+        showNotif('Usuario desactivado');
+        await refreshAll();
+    } catch (e) { showNotif(e.response?.data?.error || 'Error', 'err'); }
 };
 
 
@@ -247,6 +269,11 @@ const eliminarIngrediente = async (id) => {
                         <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Nivel de Alerta Crítico (Mínimo)</label>
                         <input type="number" step="0.01" v-model="fInsumo.nivel_alerta" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box;" />
                         <p style="font-size:10px;color:#9ca3af;margin:4px 0 0 0;">Si el stock baja de este número, se mostrará alerta.</p>
+                    </div>
+                    <div style="margin-bottom:14px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Costo Unitario ($)</label>
+                        <input type="number" step="0.01" v-model="fInsumo.costo_unitario" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box;" />
+                        <p style="font-size:10px;color:#9ca3af;margin:4px 0 0 0;">Precio de compra unitario (usado para calcular utilidad).</p>
                     </div>
 
                     <div v-if="editInsumoId" style="margin-bottom:20px;">
@@ -413,7 +440,7 @@ const eliminarIngrediente = async (id) => {
             <div v-if="tab==='inventario'">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
                     <h2 style="font-size:18px;font-weight:800;">Gestión de Insumos</h2>
-                    <button @click="editInsumoId=null; fInsumo={nombre_insumo:'',unidad_medida:'gramos',stock_actual:0,nivel_alerta:10,estado:'Activo'}; modalInsumo=true;" style="background:#16a34a;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;">+ Nuevo Insumo</button>
+                    <button @click="editInsumoId=null; fInsumo={nombre_insumo:'',unidad_medida:'gramos',stock_actual:0,nivel_alerta:10,costo_unitario:0,estado:'Activo'}; modalInsumo=true;" style="background:#16a34a;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;">+ Nuevo Insumo</button>
                 </div>
                 
                 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;overflow-x:auto;">
@@ -426,7 +453,7 @@ const eliminarIngrediente = async (id) => {
                         </tr></thead>
                         <tbody>
                             <tr v-for="ins in insumos" :key="ins.id_insumo" style="border-bottom:1px solid #f3f4f6;">
-                                <td style="padding:14px 20px;font-weight:700;">{{ ins.nombre_insumo }}</td>
+                                <td style="padding:14px 20px;font-weight:700;">{{ ins.nombre_insumo }} <span style="font-size:10px;font-weight:800;color:#9ca3af;margin-left:5px;">${{ parseFloat(ins.costo_unitario || 0).toFixed(2) }}/u</span></td>
                                 <td style="padding:14px 20px;font-weight:800;color:#16a34a;">{{ parseFloat(ins.stock_actual).toFixed(2) }} <span style="font-weight:400;font-size:12px;color:#6b7280;">{{ ins.unidad_medida }}</span></td>
                                 <td style="padding:14px 20px;">
                                     <span :style="ins.estado==='Activo'?'background:#dcfce7;color:#16a34a;':'background:#fee2e2;color:#dc2626;'" style="padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;">{{ ins.estado }}</span>
@@ -467,9 +494,8 @@ const eliminarIngrediente = async (id) => {
                                 <span :style="prod.estado==='Activo'?'background:#dcfce7;color:#16a34a;':'background:#fee2e2;color:#dc2626;'" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;">{{ prod.estado }}</span>
                             </div>
                             <p style="font-size:12px;color:#6b7280;margin:0 0 16px 0;line-height:1.4;height:34px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">{{ prod.descripcion || 'Sin descripción' }}</p>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                            <div style="display:grid;grid-template-columns:1fr;gap:8px;">
                                 <button @click="prepararEditProducto(prod)" style="background:#f3f4f6;border:none;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">✏️ Editar</button>
-                                <button @click="abrirReceta(prod)" style="background:#eff6ff;border:none;padding:8px;border-radius:8px;font-size:12px;font-weight:700;color:#2563eb;cursor:pointer;">📋 Receta</button>
                             </div>
                         </div>
                     </div>
@@ -477,8 +503,31 @@ const eliminarIngrediente = async (id) => {
             </div>
 
             <!-- RECETA -->
-            <div v-if="tab==='receta' && productoReceta" style="display:grid;grid-template-columns:340px 1fr;gap:20px;">
-                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:22px;">
+            <div v-if="tab==='receta'">
+                <!-- Grid Global de Recetas -->
+                <div v-if="!productoReceta">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+                        <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">Catálogo de Recetas</h2>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;">
+                        <div v-for="prod in productos" :key="prod.id_producto" style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;overflow:hidden;transition:all 0.2s;" onmouseover="this.style.boxShadow='0 10px 15px -3px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+                            <div style="height:120px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;">
+                                <img v-if="prod.url_imagen" :src="prod.url_imagen" style="width:100%;height:100%;object-fit:cover;">
+                                <span v-else style="font-size:40px;">🌮</span>
+                            </div>
+                            <div style="padding:16px;">
+                                <h4 style="font-size:15px;font-weight:800;margin:0;color:#111827;">{{ prod.nombre_prod }}</h4>
+                                <button @click="abrirReceta(prod)" style="margin-top:10px;width:100%;background:#eff6ff;border:none;padding:8px;border-radius:8px;font-size:12px;font-weight:700;color:#2563eb;cursor:pointer;">📋 Ver/Editar Receta</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Editor Individual de Receta -->
+                <div v-else>
+                    <button @click="productoReceta=null" style="margin-bottom:20px;background:#f3f4f6;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer;">← Volver a Todas las Recetas</button>
+                    <div style="display:grid;grid-template-columns:340px 1fr;gap:20px;">
+                        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:22px;">
                     <div style="background:#eff6ff;border-radius:10px;padding:12px;margin-bottom:18px;display:flex;align-items:center;gap:12px;">
                         <img v-if="productoReceta.url_imagen" :src="productoReceta.url_imagen" style="width:40px;height:40px;border-radius:8px;object-fit:cover;">
                         <div>
@@ -523,6 +572,8 @@ const eliminarIngrediente = async (id) => {
                         </tbody>
                     </table>
                 </div>
+                    </div>
+                </div>
             </div>
 
             <!-- CATEGORÍAS -->
@@ -553,16 +604,22 @@ const eliminarIngrediente = async (id) => {
             <div v-if="tab==='usuarios'">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
                     <h2 style="font-size:18px;font-weight:800;">Gestión de Personal</h2>
-                    <button @click="modalUsuario=true" style="background:#2563eb;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;">+ Nuevo Empleado</button>
+                    <button v-if="auth.user.id_usuario === 1" @click="editUsuarioId=null; fUsuario={nombre_completo:'',correo:'',telefono:'',pin_acceso:'',id_rol:'',estado:'Activo'}; modalUsuario=true" style="background:#2563eb;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;">+ Nuevo Empleado</button>
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:16px;">
                     <div v-for="u in usuarios" :key="u.id_usuario" style="background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:20px;display:flex;align-items:center;gap:15px;">
                         <div style="width:50px;height:50px;background:#f3f4f6;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;">👤</div>
                         <div style="flex:1;">
-                            <p style="margin:0;font-weight:800;font-size:15px;">{{ u.nombre_completo }}</p>
-                            <p style="margin:0;font-size:12px;color:#6b7280;">{{ u.rol?.descripcion }} · {{ u.correo }}</p>
+                            <p style="margin:0;font-weight:800;font-size:15px;">{{ u.nombre_completo }} <span v-if="u.id_usuario === 1" style="color:#d97706;font-size:11px;">(SUPER)</span></p>
+                            <p style="margin:0;font-size:12px;color:#6b7280;">{{ u.rol?.descripcion }} · {{ u.telefono || 'Sin tel.' }}</p>
                         </div>
                         <span :style="u.estado==='Activo'?'background:#dcfce7;color:#16a34a;':'background:#fee2e2;color:#dc2626;'" style="font-size:10px;font-weight:800;padding:4px 8px;border-radius:10px;">{{ u.estado }}</span>
+                    </div>
+                    
+                    <div v-if="auth.user.id_usuario === 1" style="padding-top:10px;display:flex;gap:8px;width:100%;">
+                        <button @click="prepararEditUsuario(u)" style="flex:1;background:#f3f4f6;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;color:#374151;cursor:pointer;">Editar</button>
+                        <button v-if="u.id_usuario !== 1" @click="eliminarUsuario(u.id_usuario)" style="flex:1;background:#fef2f2;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:700;color:#dc2626;cursor:pointer;">Desactivar</button>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -636,20 +693,26 @@ const eliminarIngrediente = async (id) => {
     <Teleport to="body">
         <div v-if="modalUsuario" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:2000;backdrop-filter:blur(4px);">
             <div style="background:#fff;width:100%;max-width:450px;border-radius:24px;padding:32px;box-shadow:0 20px 50px rgba(0,0,0,0.2);">
-                <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;">Nuevo Usuario</h2>
+                <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;">{{ editUsuarioId ? 'Editar' : 'Nuevo' }} Usuario</h2>
                 <form @submit.prevent="guardarUsuario">
                     <div style="margin-bottom:14px;">
                         <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Nombre Completo</label>
                         <input type="text" v-model="fUsuario.nombre_completo" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;" />
                     </div>
-                    <div style="margin-bottom:14px;">
-                        <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Correo Electrónico</label>
-                        <input type="email" v-model="fUsuario.correo" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;" />
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                        <div>
+                            <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Correo Electrónico</label>
+                            <input type="email" v-model="fUsuario.correo" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;" />
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Teléfono</label>
+                            <input type="text" v-model="fUsuario.telefono" style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;" />
+                        </div>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
                         <div>
                             <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">PIN (4 dígitos)</label>
-                            <input type="password" maxlength="4" v-model="fUsuario.pin_acceso" required style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;" />
+                            <input type="password" maxlength="4" v-model="fUsuario.pin_acceso" :required="!editUsuarioId" :placeholder="editUsuarioId ? 'Dejar vacío si no cambia' : ''" style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;" />
                         </div>
                         <div>
                             <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Rol</label>
@@ -660,9 +723,16 @@ const eliminarIngrediente = async (id) => {
                             </select>
                         </div>
                     </div>
+                    <div v-if="editUsuarioId" style="margin-bottom:20px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Estado</label>
+                        <select v-model="fUsuario.estado" style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px;font-size:14px;outline:none;background:#fff;">
+                            <option value="Activo">Activo</option>
+                            <option value="Inactivo">Inactivo</option>
+                        </select>
+                    </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                         <button type="button" @click="modalUsuario=false" style="padding:14px;background:#f3f4f6;border:none;border-radius:12px;font-weight:700;cursor:pointer;">Cerrar</button>
-                        <button type="submit" style="padding:14px;background:#2563eb;border:none;border-radius:12px;color:#fff;font-weight:700;cursor:pointer;">Crear Usuario</button>
+                        <button type="submit" style="padding:14px;background:#2563eb;border:none;border-radius:12px;color:#fff;font-weight:700;cursor:pointer;">Guardar Usuario</button>
                     </div>
                 </form>
             </div>

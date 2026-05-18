@@ -24,18 +24,42 @@ Route::get('/run-migrations', function () {
 });
 
 Route::get('/debug-db', function () {
+    $debug = [
+        'connection' => config('database.default'),
+        'host' => config('database.connections.' . config('database.default') . '.host', 'N/A'),
+        'database' => config('database.connections.' . config('database.default') . '.database', 'N/A'),
+        'user_count' => \Illuminate\Support\Facades\DB::table('Usuario')->count(),
+        'users' => \Illuminate\Support\Facades\DB::table('Usuario')->select('nombre_completo', 'correo')->get(),
+    ];
+
     try {
-        return response()->json([
-            'connection' => config('database.default'),
-            'host' => config('database.connections.' . config('database.default') . '.host', 'N/A'),
-            'database' => config('database.connections.' . config('database.default') . '.database', 'N/A'),
-            'user_count' => \Illuminate\Support\Facades\DB::table('Usuario')->count(),
-            'users' => \Illuminate\Support\Facades\DB::table('Usuario')->select('nombre_completo', 'correo')->get(),
-            'env_db_connection' => env('DB_CONNECTION', 'Not Set')
-        ]);
+        $costos = \Illuminate\Support\Facades\DB::table('Detalle_Pedido as dp')
+            ->join('Pedido as p', 'dp.id_pedido', '=', 'p.id_pedido')
+            ->join('Receta as r', 'dp.id_producto', '=', 'r.id_producto')
+            ->join('Insumo as i', 'r.id_insumo', '=', 'i.id_insumo')
+            ->where('p.estado_pedido', 'Pagado')
+            ->selectRaw('COALESCE(SUM(dp.cantidad * r.cantidad_necesaria * i.costo_unitario), 0) as costos')
+            ->value('costos');
+        $debug['test_profit_query'] = $costos;
     } catch (\Exception $e) {
-        return response()->json(['error' => $e->getMessage()]);
+        $debug['error_profit_query'] = $e->getMessage();
     }
+
+    try {
+        $insumos = \Illuminate\Support\Facades\DB::table('Insumo')->first();
+        $debug['test_insumos_table'] = $insumos;
+    } catch (\Exception $e) {
+        $debug['error_insumos_table'] = $e->getMessage();
+    }
+
+    try {
+        $usuarios = \Illuminate\Support\Facades\DB::table('Usuario')->first();
+        $debug['test_usuarios_table'] = $usuarios;
+    } catch (\Exception $e) {
+        $debug['error_usuarios_table'] = $e->getMessage();
+    }
+
+    return response()->json($debug);
 });
 
 Route::middleware(['auth'])->group(function () {

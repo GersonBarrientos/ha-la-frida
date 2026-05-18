@@ -29,7 +29,7 @@ class CheckRole
         }
 
         // Verificar si el id_rol del usuario está en los roles permitidos
-        if (!in_array($user->id_rol, $roles, true)) {
+        if (!in_array($user->id_rol, $roles)) {
             return response()->json([
                 'error' => 'Forbidden',
                 'message' => 'No tienes permisos para acceder a este recurso. Se requiere rol: ' . implode(', ', $roles)

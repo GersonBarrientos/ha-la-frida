@@ -23,6 +23,21 @@ Route::get('/run-migrations', function () {
     }
 });
 
+Route::get('/debug-db', function () {
+    try {
+        return response()->json([
+            'connection' => config('database.default'),
+            'host' => config('database.connections.' . config('database.default') . '.host', 'N/A'),
+            'database' => config('database.connections.' . config('database.default') . '.database', 'N/A'),
+            'user_count' => \Illuminate\Support\Facades\DB::table('Usuario')->count(),
+            'users' => \Illuminate\Support\Facades\DB::table('Usuario')->select('nombre_completo', 'correo')->get(),
+            'env_db_connection' => env('DB_CONNECTION', 'Not Set')
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()]);
+    }
+});
+
 Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', function () {
         $user = auth()->user();

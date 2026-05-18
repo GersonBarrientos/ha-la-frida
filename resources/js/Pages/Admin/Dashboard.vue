@@ -50,23 +50,39 @@ const criticos = computed(() => insumos.value.filter(i => parseFloat(i.stock_act
 
 const refreshAll = async () => {
     try {
-        const [s, ins, prod, cats, usr, prof, hist] = await Promise.all([
-            axios.get('/api/admin/stats'),
-            axios.get('/api/admin/insumos'),
-            axios.get('/api/admin/productos'),
-            axios.get('/api/admin/categorias'),
-            axios.get('/api/admin/usuarios'),
-            axios.get('/api/admin/profit'),
-            axios.get('/api/admin/history'),
-        ]);
+        const s = await axios.get('/api/admin/stats');
         stats.value = s.data;
+    } catch(e) { console.error('Error loading stats:', e); }
+
+    try {
+        const ins = await axios.get('/api/admin/insumos');
         insumos.value = ins.data;
+    } catch(e) { console.error('Error loading insumos:', e); }
+
+    try {
+        const prod = await axios.get('/api/admin/productos');
         productos.value = prod.data;
+    } catch(e) { console.error('Error loading productos:', e); }
+
+    try {
+        const cats = await axios.get('/api/admin/categorias');
         categorias.value = cats.data;
+    } catch(e) { console.error('Error loading categorias:', e); }
+
+    try {
+        const usr = await axios.get('/api/admin/usuarios');
         usuarios.value = usr.data;
+    } catch(e) { console.error('Error loading usuarios:', e); }
+
+    try {
+        const prof = await axios.get('/api/admin/profit');
         profitData.value = prof.data;
+    } catch(e) { console.error('Error loading profit:', e); }
+
+    try {
+        const hist = await axios.get('/api/admin/history');
         history.value = hist.data;
-    } catch(e) { console.error('Error loading data:', e); }
+    } catch(e) { console.error('Error loading history:', e); }
 };
 
 const guardarCategoria = async () => {
